@@ -4,7 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Copyright 2018 Joyent, Inc.
+# Copyright (c) 2018 Joyent, Inc.
 #
 
 #
@@ -52,7 +52,7 @@ sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
 
 # Setup for CNS to actually work
 sdc-useradm replace-attr admin approved_for_provisioning true </dev/null
-sdc-useradm replace-attr admin triton_cns_enabled true || sdc-useradm add-attr admin triton_cns_enabled true
+sdc-useradm replace-attr admin triton_cns_enabled true </dev/null
 sdc-login -l cns "svcadm restart cns-updater" </dev/null
 sdc-login -l cns "cnsadm vm \$(vmadm lookup alias=vmapi0)" </dev/null
 
@@ -105,7 +105,7 @@ echo "Binder Resolver: \${binder_resolver}"
 echo "Creating VM..."
 vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
 {
-    "alias": "prometheus0",
+    "alias": "prometheus1",
     "billing_id": "\${package}",
     "brand": "lx",
     "image_uuid": "${IMAGE_UUID}",
@@ -157,7 +157,7 @@ rule_files:
 # Here it's Prometheus itself.
 scrape_configs:
   # The job name is added as a label 'job=<job_name>' to any timeseries scraped from this config.
-  - job_name: 'cmon_\${prometheus_dc}'
+  - job_name: 'admin_\${prometheus_dc}'
     scheme: https
     tls_config:
       cert_file: /root/prometheus/prometheus_key.pub.pem
@@ -197,8 +197,8 @@ cat >/zones/\${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
 SYSTEMD
 
 cd /zones/\${vm_uuid}/root/root
-curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-x64.tar.gz 
-tar -zxvf grafana-${GRAFANA_VERSION}.linux-x64.tar.gz 
+curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-x64.tar.gz
+tar -zxvf grafana-${GRAFANA_VERSION}.linux-x64.tar.gz
 ln -s grafana-${GRAFANA_VERSION} grafana
 cd grafana
 
@@ -249,4 +249,3 @@ echo "Try Prometheus: http://\${prometheus_ip}:9090/"
 echo "Try Grafana: http://\${prometheus_ip}:3000/"
 
 EOF
-

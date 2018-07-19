@@ -1,5 +1,13 @@
 #!/bin/bash
 #
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+# Copyright (c) 2018 Joyent, Inc.
+#
+
+#
 # Setup a prom/grafana in COAL (or another headnode) for admin zones.
 #
 
@@ -23,12 +31,15 @@ fi
 # It's ok for this to fail if we already have the image
 sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
 
-# Setup for CNS to actually work
+# Setup for CNS to work
+# XXX change to not mod if already set
 sdc-useradm replace-attr admin approved_for_provisioning true </dev/null
-sdc-useradm replace-attr admin triton_cns_enabled true || sdc-useradm add-attr admin triton_cns_enabled true
+sdc-useradm replace-attr admin triton_cns_enabled true </dev/null
 sdc-login -l cns "svcadm restart cns-updater" </dev/null
+# XXX What's the point of this one? To ensure it looks right? To force a cache warm in CNS?
 sdc-login -l cns "cnsadm vm \$(vmadm lookup alias=vmapi0)" </dev/null
 
+# XXX can we get this to the top?
 set -o errexit
 
 # need to provision to headnode so we can zlogin
@@ -42,6 +53,7 @@ network_uuid=\$(vmadm get \$(vmadm lookup alias=~^cmon | head -1) | json nics.1.
 admin_network_uuid=\$(sdc-napi /networks?name=admin | json -H 0.uuid)
 
 # Find package
+# XXX perhaps limit to the 'sdc_' packages.
 package=\$(sdc-papi /packages | json -Ha uuid max_physical_memory | sort -n -k 2 \
     | while read uuid mem; do
 
@@ -55,14 +67,19 @@ done)
 # Find CNS resolver(s)
 prometheus_dc=\$(bash /lib/sdc/config.sh -json | json datacenter_name)
 prometheus_domain=\$(bash /lib/sdc/config.sh -json | json dns_domain)
-
-resolvers=\$(dig +noall +answer +short @binder.\${prometheus_dc}.\${prometheus_domain} cns.\${prometheus_dc}.\${prometheus_domain} |  tr '\n' ',' | sed -e "s/,$//" -e "s/,/\",\"/"),8.8.8.8
+cns_resolvers=\$(dig +noall +answer +short @binder.\${prometheus_dc}.\${prometheus_domain} cns.\${prometheus_dc}.\${prometheus_domain} |  tr '\n' ',' | sed -e "s/,$//")
 
 echo "Admin: \${admin_uuid}"
 echo "Network: \${network_uuid}"
 echo "Package: \${package}"
-echo "Resolvers: \${resolvers}"
+echo "CNS Resolvers: \${cns_resolvers}"
 
+# XXX If integrating to Triton core, what is auth for prometheus? Similar to
+#     adminui I guess. Need a proxy for that? Auditing?
+# Note that until TRITON-605 is resolved, net-agent will likely be undoing
+# our explicit "resolvers" below. As a workaround we'll have a user-script
+# that sorts it out on boot.
+#   XXX see triton-prometheus/boot/configure.sh
 echo "Creating VM..."
 vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
 {
@@ -72,8 +89,12 @@ vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<
     "image_uuid": "${IMAGE_UUID}",
     "networks": [{"uuid": "\${admin_network_uuid}"}, {"uuid": "\${network_uuid}", "primary": true}],
     "owner_uuid": "\${admin_uuid}",
-    "resolvers": ["\${resolvers}"],
-    "server_uuid": "\${headnode_uuid}"
+    "resolvers": ["\$(echo "\${cns_resolvers},8.8.8.8" | sed -e 's/,/","/')"],
+    "server_uuid": "\${headnode_uuid}",
+    "customer_metadata": {
+        "cnsResolvers": "\${cns_resolvers}",
+        "user-script": "#!/bin/bash\n\nset -o errexit\nset -o pipefail\nset -o xtrace\n\nmdata-get cnsResolvers | tr , '\n' | while read ip; do\n        grep \"^nameserver \\\$ip$\" /etc/resolvconf/resolv.conf.d/head >/dev/null 2>&1 || echo \"nameserver \\\$ip\" >> /etc/resolvconf/resolv.conf.d/head;\n    done\nresolvconf -u\n\nexit 0\n"
+    }
 }
 PAYLOAD
 )
@@ -93,6 +114,8 @@ openssl x509 -req -days 365 -in prometheus_key.csr.pem -signkey prometheus_key.p
 /opt/smartdc/bin/sdc-useradm add-key -f admin prometheus_key.pub
 
 # Generate Config
+# XXX Joshw's config for 'endpoint' below uses 'cmon.us-east-stg-1b.scloud.zone'.
+#     How could that be discovered via script?
 prometheus_ip=\$(vmadm get \${vm_uuid} | json nics.1.ip)
 cns_zone="\${prometheus_dc}.cns.\${prometheus_domain}"
 
@@ -104,10 +127,7 @@ global:
   evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
   # scrape_timeout is set to the global default (10s).
 
-# A scrape configuration containing exactly one endpoint to scrape:
-# Here it's Prometheus itself.
 scrape_configs:
-  # The job name is added as a label 'job=<job_name>' to any timeseries scraped from this config.
   - job_name: 'admin_\${prometheus_dc}'
     scheme: https
     tls_config:
@@ -117,7 +137,6 @@ scrape_configs:
     relabel_configs:
       - source_labels: [__meta_triton_machine_alias]
         target_label: instance
-    # sd == service discovery
     triton_sd_configs:
       - account: 'admin'
         dns_suffix: 'cmon.\${cns_zone}'
@@ -140,7 +159,6 @@ cat >/zones/\${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
     StandardOutput=syslog
     ExecStart=/root/prometheus/prometheus \\
         --storage.tsdb.path=/root/prometheus/data \\
-        --storage.tsdb.retention=60d \\
         --config.file=/root/prometheus/prometheus.yml \\
         --web.external-url=http://\${prometheus_ip}:9090/
     User=root
@@ -151,6 +169,36 @@ SYSTEMD
 
 zlogin \${vm_uuid} "systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus" </dev/null
 
-echo "Try: http://\${prometheus_ip}:9090/"
+
+# Grafana setup
+# - For now auth is 'admin/admin'.
+# - TODO: could attempt to get auth.ldap working, or auth.proxy via a local
+#   proxy that talks to mahi/ufds to allow operators in.
+#   See http://docs.grafana.org/tutorials/authproxy/ and/or
+#   http://docs.grafana.org/installation/behind_proxy/
+# - TODO: an update plan: http://docs.grafana.org/installation/upgrading/
+#   Perhaps a delegate dataset and persisted data there, or can we be
+#   stateless with preconfig? I hope so.
+#
+(
+    cd /tmp;
+    wget https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana_5.1.4_amd64.deb;
+    apt-get install -y adduser libfontconfig;
+    dpkg -i grafana_5.1.4_amd64.deb;
+)
+
+cp /etc/grafana/grafana.ini /etc/grafana/grafana.ini.orig
+cat >/etc/grafana/grafana.ini <<GRAFANACONFIG
+[auth.anonymous]
+enabled = true
+org_name = Main Org.
+org_role = Viewer
+GRAFANACONFIG
+
+
+echo "Links:"
+echo "- prometheus server: http://\${prometheus_ip}:9090/"
+echo "- a sample graph: http://\${prometheus_ip}:9090/graph?g0.range_input=1h&g0.expr=cpucap_cur_usage_percentage%7Binstance%3D~%22cnapi.%22%7D&g0.tab=0
+echo "- grafana server: http://\${prometheus_ip}:3000/"
 
 EOF

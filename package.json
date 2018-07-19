@@ -1,0 +1,19 @@
+{
+  "name": "triton-prometheus",
+  "description": "Prometheus for TritonDC",
+  "version": "1.0.0",
+  "author": "Joyent (joyent.com)",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joyent/triton-prometheus.git"
+  },
+  "dependencies": {
+  },
+  "devDependencies": {
+  },
+  "engines": {
+    "node": ">=4.x"
+  },
+  "license": "MPL-2.0"
+}

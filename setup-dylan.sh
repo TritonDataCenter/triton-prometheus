@@ -25,6 +25,7 @@ IMAGE_UUID="7b5981c4-1889-11e7-b4c5-3f3bdfc9b88b" # LX Ubuntu 16.04
 MIN_MEMORY=1024
 PROMETHEUS_VERSION="2.2.0"
 GRAFANA_VERSION="5.0.2"
+ALIAS=prometheus1
 
 HOST=$1
 if [[ -z ${HOST} ]]; then
@@ -83,36 +84,45 @@ done)
 prometheus_dc=\$(bash /lib/sdc/config.sh -json | json datacenter_name)
 prometheus_domain=\$(bash /lib/sdc/config.sh -json | json dns_domain)
 
-binder_resolver=\$(dig +short binder.\${prometheus_dc}.\${prometheus_domain} | head -n 1)
-cns_resolver=\$(dig +noall +answer +short @binder.\${prometheus_dc}.\${prometheus_domain} cns.\${prometheus_dc}.\${prometheus_domain} |  tr '\n' ',' | sed -e "s/,$//" -e "s/,/\",\"/")
+binder_resolvers=\$(dig +short binder.\${prometheus_dc}.\${prometheus_domain} | tr '\n' ',' | sed -e "s/,$//")
+cns_resolvers=\$(dig +noall +answer +short @binder.\${prometheus_dc}.\${prometheus_domain} cns.\${prometheus_dc}.\${prometheus_domain} | tr '\n' ',' | sed -e "s/,$//")
 
-echo "Admin: \${admin_uuid}"
+echo "Admin account: \${admin_uuid}"
 echo "Admin network: \${admin_network_uuid}"
 echo "Headnode: \${headnode_uuid}"
 echo "Network: \${network_uuid}"
 echo "Package: \${package}"
-echo "CNS Resolver: \${cns_resolver}"
-echo "Binder Resolver: \${binder_resolver}"
+echo "Alias: \${alias}"
+echo "CNS Resolvers: \${cns_resolvers}"
+echo "Binder Resolvers: \${binder_resolvers}"
 
 [[ -n "\${admin_uuid}" ]] || fatal "missing admin UUID"
 [[ -n "\${headnode_uuid}" ]] || fatal "missing headnode UUID"
 [[ -n "\${network_uuid}" ]] || fatal "missing CMON network UUID"
 [[ -n "\${admin_network_uuid}" ]] || fatal "missing admin network UUID"
 [[ -n "\${package}" ]] || fatal "missing package"
-[[ -n "\${cns_resolver}" ]] || fatal "missing CNS resolver"
-[[ -n "\${binder_resolver}" ]] || fatal "missing binder resolver"
+[[ -n "\${cns_resolvers}" ]] || fatal "missing CNS resolver"
+[[ -n "\${binder_resolvers}" ]] || fatal "missing binder resolver"
 
-echo "Creating VM..."
+# Note that until TRITON-605 is resolved, net-agent will likely be undoing
+# our explicit "resolvers" below. As a workaround we'll have a user-script
+# that sorts it out on boot (see ./boot/configure.sh for a future
+# alternative to this user-script).
+echo "Creating VM ${ALIAS} ..."
 vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
 {
-    "alias": "prometheus1",
+    "alias": "${ALIAS}",
     "billing_id": "\${package}",
     "brand": "lx",
     "image_uuid": "${IMAGE_UUID}",
     "networks": [{"uuid": "\${admin_network_uuid}"}, {"uuid": "\${network_uuid}", "primary": true}],
     "owner_uuid": "\${admin_uuid}",
-    "resolvers": ["\${cns_resolver}", "\${binder_resolver}"],
-    "server_uuid": "\${headnode_uuid}"
+    "server_uuid": "\${headnode_uuid}",
+    "resolvers": ["\$(echo "\${cns_resolvers},\${binder_resolvers},8.8.8.8" | sed -e 's/,/","/g')"],
+    "customer_metadata": {
+        "cnsResolvers": "\${cns_resolvers}",
+        "user-script": "#!/bin/bash\n\nset -o errexit\nset -o pipefail\nset -o xtrace\n\nmdata-get cnsResolvers | tr , '\n' | while read ip; do\n        grep \"^nameserver \\\$ip$\" /etc/resolvconf/resolv.conf.d/head >/dev/null 2>&1 || echo \"nameserver \\\$ip\" >> /etc/resolvconf/resolv.conf.d/head;\n    done\nresolvconf -u\n\nexit 0\n"
+    }
 }
 PAYLOAD
 )

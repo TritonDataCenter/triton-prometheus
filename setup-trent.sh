@@ -14,6 +14,7 @@
 IMAGE_UUID="7b5981c4-1889-11e7-b4c5-3f3bdfc9b88b" # LX Ubuntu 16.04
 MIN_MEMORY=2048
 PROMETHEUS_VERSION="2.3.0"
+ALIAS=prometheus0
 
 HOST=$1
 if [[ -z ${HOST} ]]; then
@@ -74,22 +75,20 @@ echo "Network: \${network_uuid}"
 echo "Package: \${package}"
 echo "CNS Resolvers: \${cns_resolvers}"
 
-# XXX If integrating to Triton core, what is auth for prometheus? Similar to
-#     adminui I guess. Need a proxy for that? Auditing?
 # Note that until TRITON-605 is resolved, net-agent will likely be undoing
 # our explicit "resolvers" below. As a workaround we'll have a user-script
-# that sorts it out on boot.
-#   XXX see triton-prometheus/boot/configure.sh
-echo "Creating VM..."
+# that sorts it out on boot (see ./boot/configure.sh for a future
+# alternative to this user-script).
+echo "Creating VM ${ALIAS} ..."
 vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
 {
-    "alias": "prometheus0",
+    "alias": "${ALIAS}",
     "billing_id": "\${package}",
     "brand": "lx",
     "image_uuid": "${IMAGE_UUID}",
     "networks": [{"uuid": "\${admin_network_uuid}"}, {"uuid": "\${network_uuid}", "primary": true}],
     "owner_uuid": "\${admin_uuid}",
-    "resolvers": ["\$(echo "\${cns_resolvers},8.8.8.8" | sed -e 's/,/","/')"],
+    "resolvers": ["\$(echo "\${cns_resolvers},8.8.8.8" | sed -e 's/,/","/g')"],
     "server_uuid": "\${headnode_uuid}",
     "customer_metadata": {
         "cnsResolvers": "\${cns_resolvers}",

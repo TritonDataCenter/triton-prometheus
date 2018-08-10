@@ -28,9 +28,12 @@ GRAFANA_VERSION="5.0.2"
 ALIAS=prometheus0
 
 HOST=$1
-if [[ -z ${HOST} ]]; then
-    HOST="coal"
+if [[ -z "$HOST" ]]; then
+    echo "error: missing HEADNODE-GZ argument" >&2
+    echo "usage: ./setup-prometheus.sh HEADNODE-GZ" >&2
+    exit 1
 fi
+
 if [[ -z ${SSH_OPTS} ]]; then
     SSH_OPTS=""
 fi
@@ -47,6 +50,9 @@ function fatal() {
 if [[ -n "${TRACE}" ]]; then
     set -o xtrace
 fi
+
+vm_uuid=\$(vmadm lookup alias=$ALIAS)
+[[ -z "\$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
 # It's ok for this to fail if we already have the image
 sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
@@ -92,7 +98,7 @@ echo "Admin network: \${admin_network_uuid}"
 echo "Headnode: \${headnode_uuid}"
 echo "Network: \${network_uuid}"
 echo "Package: \${package}"
-echo "Alias: \${alias}"
+echo "Alias: ${ALIAS}"
 echo "CNS Resolvers: \${cns_resolvers}"
 echo "Binder Resolvers: \${binder_resolvers}"
 
@@ -108,8 +114,7 @@ echo "Binder Resolvers: \${binder_resolvers}"
 #   be undoing our explicit "resolvers" below. As a workaround we'll have a
 #   user-script that sorts it out on boot (see ./boot/configure.sh for a future
 #   alternative to this user-script).
-# - tags.smartdc_role: Allow this zone to be logged into via `sdc-login -l
-#   prom`.
+# - tags.smartdc_role: So 'sdc-login -l prom' works.
 echo "Creating VM ${ALIAS} ..."
 vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
 {
@@ -207,71 +212,12 @@ cat >/zones/\${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
 SYSTEMD
 
 
-#
-# Grafana setup.
-#
-
-# Get the latest https://github.com/joyent/triton-dashboards
-cd /zones/\${vm_uuid}/root/root
-curl -Lk -o triton-dashboards-master.tgz https://github.com/joyent/triton-dashboards/archive/master.tar.gz
-tar -zxvf triton-dashboards-master.tgz
-mv triton-dashboards-master triton-dashboards
-
-# Setup grafana.
-cd /zones/\${vm_uuid}/root/root
-curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-x64.tar.gz
-tar -zxvf grafana-${GRAFANA_VERSION}.linux-x64.tar.gz
-ln -s grafana-${GRAFANA_VERSION} grafana
-cd grafana
-
-cat >./conf/provisioning/datasources/triton.yaml <<DATAYML
-# config file version
-apiVersion: 1
-
-datasources:
-    - name: Triton
-      type: prometheus
-      access: proxy
-      orgId: 1
-      url: http://localhost:9090
-      isDefault: true
-      editable: true
-DATAYML
-
-cat >./conf/provisioning/dashboards/triton.yaml <<DASHYML
-# config file version
-apiVersion: 1
-
-providers:
-    - name: Triton
-      orgId: 1
-      folder: ''
-      type: file
-      options:
-        path: /root/triton-dashboards/dashboards
-DASHYML
-
-# Generate grafana systemd manifest
-cat >/zones/\${vm_uuid}/root/etc/systemd/system/grafana.service <<SYSTEMD
-[Unit]
-	Description=Grafana server
-	After=network.target
-
-[Service]
-	WorkingDirectory=/root/grafana
-	StandardOutput=syslog
-	ExecStart=/root/grafana/bin/grafana-server
-	User=root
-
-[Install]
-	WantedBy=multi-user.target
-SYSTEMD
-
 zlogin \${vm_uuid} "systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus" </dev/null
-zlogin \${vm_uuid} "systemctl daemon-reload && systemctl enable grafana && systemctl start grafana && systemctl status grafana" </dev/null
 
-
-echo "Try Prometheus: http://\${prometheus_ip}:9090/"
-echo "Try Grafana: http://\${prometheus_ip}:3000/ (admin:admin)"
+echo "* * * Successfully setup * * *"
+echo "Prometheus: http://\${prometheus_ip}:9090/"
+echo ""
+echo "You can setup a grafana0 zone next via:"
+echo "    ./setup-grafana.sh $1"
 
 EOF

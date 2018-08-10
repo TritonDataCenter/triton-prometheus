@@ -42,17 +42,17 @@ fi
 ssh ${SSH_OPTS} ${HOST} <<EOF
 
 set -o errexit
-
-. ~/.bash_profile
+if [[ -n "${TRACE}" ]]; then
+    set -o xtrace
+fi
 
 function fatal() {
     echo "FATAL: \$*" >&2
     exit 1
 }
 
-if [[ -n "${TRACE}" ]]; then
-    set -o xtrace
-fi
+. ~/.bash_profile
+
 
 #
 # grafana0 zone creation

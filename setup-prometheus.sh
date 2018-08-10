@@ -40,22 +40,30 @@ fi
 
 # Code in this block runs on the remote system
 ssh ${SSH_OPTS} ${HOST} <<EOF
-. ~/.bash_profile
+
+set -o errexit
+if [[ -n "${TRACE}" ]]; then
+    set -o xtrace
+fi
 
 function fatal() {
     echo "FATAL: \$*" >&2
     exit 1
 }
 
-if [[ -n "${TRACE}" ]]; then
-    set -o xtrace
-fi
+. ~/.bash_profile
+
+
+#
+# prometheus0 zone creation
+#
 
 vm_uuid=\$(vmadm lookup alias=$ALIAS)
 [[ -z "\$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
-# It's ok for this to fail if we already have the image
-sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
+if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
+    sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
+fi
 
 # Setup for CNS to actually work
 sdc-useradm replace-attr admin approved_for_provisioning true </dev/null
@@ -214,10 +222,11 @@ SYSTEMD
 
 zlogin \${vm_uuid} "systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus" </dev/null
 
+echo ""
 echo "* * * Successfully setup * * *"
 echo "Prometheus: http://\${prometheus_ip}:9090/"
 echo ""
 echo "You can setup a grafana0 zone next via:"
-echo "    ./setup-grafana.sh $1"
+echo "    ./setup-grafana.sh $HOST"
 
 EOF

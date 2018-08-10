@@ -104,10 +104,12 @@ echo "Binder Resolvers: \${binder_resolvers}"
 [[ -n "\${cns_resolvers}" ]] || fatal "missing CNS resolver"
 [[ -n "\${binder_resolvers}" ]] || fatal "missing binder resolver"
 
-# Note that until TRITON-605 is resolved, net-agent will likely be undoing
-# our explicit "resolvers" below. As a workaround we'll have a user-script
-# that sorts it out on boot (see ./boot/configure.sh for a future
-# alternative to this user-script).
+# - user-script: Note that until TRITON-605 is resolved, net-agent will likely
+#   be undoing our explicit "resolvers" below. As a workaround we'll have a
+#   user-script that sorts it out on boot (see ./boot/configure.sh for a future
+#   alternative to this user-script).
+# - tags.smartdc_role: Allow this zone to be logged into via `sdc-login -l
+#   prom`.
 echo "Creating VM ${ALIAS} ..."
 vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
 {
@@ -122,6 +124,9 @@ vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<
     "customer_metadata": {
         "cnsResolvers": "\${cns_resolvers}",
         "user-script": "#!/bin/bash\n\nset -o errexit\nset -o pipefail\nset -o xtrace\n\nmdata-get cnsResolvers | tr , '\n' | while read ip; do\n        grep \"^nameserver \\\$ip$\" /etc/resolvconf/resolv.conf.d/head >/dev/null 2>&1 || echo \"nameserver \\\$ip\" >> /etc/resolvconf/resolv.conf.d/head;\n    done\nresolvconf -u\n\nexit 0\n"
+    },
+    "tags": {
+        "smartdc_role": "prometheus"
     }
 }
 PAYLOAD
@@ -152,11 +157,6 @@ global:
   scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
   evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
   # scrape_timeout is set to the global default (10s).
-
-  # Attach these labels to any time series or alerts when communicating with
-  # external systems (federation, remote storage, Alertmanager).
-  external_labels:
-      monitor: 'codelab-monitor'
 
 # Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
 rule_files:
@@ -206,36 +206,50 @@ cat >/zones/\${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
     WantedBy=multi-user.target
 SYSTEMD
 
+
+#
+# Grafana setup.
+#
+
+# Get the latest https://github.com/joyent/triton-dashboards
+cd /zones/\${vm_uuid}/root/root
+curl -Lk -o triton-dashboards-master.tgz https://github.com/joyent/triton-dashboards/archive/master.tar.gz
+tar -zxvf triton-dashboards-master.tgz
+mv triton-dashboards-master triton-dashboards
+
+# Setup grafana.
 cd /zones/\${vm_uuid}/root/root
 curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-x64.tar.gz
 tar -zxvf grafana-${GRAFANA_VERSION}.linux-x64.tar.gz
 ln -s grafana-${GRAFANA_VERSION} grafana
 cd grafana
 
-cat >datasource.yaml <<DATAYML
+cat >./conf/provisioning/datasources/triton.yaml <<DATAYML
 # config file version
 apiVersion: 1
 
-# list of datasources to insert/update depending
-# on what's available in the datbase
 datasources:
-    # <string, required> name of the datasource. Required
-    - name: Prometheus
-    # <string, required> datasource type. Required
+    - name: Triton
       type: prometheus
-    # <string, required> access mode. direct or proxy. Required
       access: proxy
-    # <int> org id. will default to orgId 1 if not specified
       orgId: 1
-    # <string> url
       url: http://localhost:9090
-    # <bool> mark as default datasource. Max one per org
       isDefault: true
-    # <bool> allow users to edit datasources from the UI.
       editable: true
 DATAYML
 
-mv datasource.yaml conf/provisioning/datasources/
+cat >./conf/provisioning/dashboards/triton.yaml <<DASHYML
+# config file version
+apiVersion: 1
+
+providers:
+    - name: Triton
+      orgId: 1
+      folder: ''
+      type: file
+      options:
+        path: /root/triton-dashboards/dashboards
+DASHYML
 
 # Generate grafana systemd manifest
 cat >/zones/\${vm_uuid}/root/etc/systemd/system/grafana.service <<SYSTEMD
@@ -253,9 +267,11 @@ cat >/zones/\${vm_uuid}/root/etc/systemd/system/grafana.service <<SYSTEMD
 	WantedBy=multi-user.target
 SYSTEMD
 
-zlogin \${vm_uuid} "systemctl daemon-reload && systemctl enable prometheus && systemctl enable grafana && systemctl start prometheus && systemctl start grafana && systemctl status prometheus && systemctl status grafana" </dev/null
+zlogin \${vm_uuid} "systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus" </dev/null
+zlogin \${vm_uuid} "systemctl daemon-reload && systemctl enable grafana && systemctl start grafana && systemctl status grafana" </dev/null
+
 
 echo "Try Prometheus: http://\${prometheus_ip}:9090/"
-echo "Try Grafana: http://\${prometheus_ip}:3000/"
+echo "Try Grafana: http://\${prometheus_ip}:3000/ (admin:admin)"
 
 EOF

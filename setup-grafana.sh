@@ -68,6 +68,7 @@ fi
 headnode_uuid=\$(sysinfo | json UUID)
 admin_uuid=\$(sdc-useradm get admin | json uuid)
 admin_network_uuid=\$(sdc-napi /networks?name=admin | json -H 0.uuid)
+external_network_uuid=\$(sdc-napi /networks?name=external | json -H 0.uuid)
 package=\$(sdc-papi /packages | json -Ha uuid max_physical_memory | sort -n -k 2 \
     | while read uuid mem; do
 
@@ -85,6 +86,7 @@ prometheus_ip=\$(vmadm lookup -1 alias=prometheus0 -j \
 
 echo "Admin account: \${admin_uuid}"
 echo "Admin network: \${admin_network_uuid}"
+echo "External network: \${external_network_uuid}"
 echo "Headnode: \${headnode_uuid}"
 echo "Package: \${package}"
 echo "Alias: ${ALIAS}"
@@ -94,8 +96,8 @@ echo "Alias: ${ALIAS}"
 [[ -n "\${admin_network_uuid}" ]] || fatal "missing admin network UUID"
 [[ -n "\${package}" ]] || fatal "missing package"
 
-# - networks: Need the 'admin' to access the prometheus0 zone. Stick to just
-#   the 'admin' network for now, because we don't have an auth story.
+# - networks: Need the 'admin' to access the prometheus0 zone. Need 'external'
+#   so, in general, an operator can reach it. WARNING: Need an auth story here.
 # - tags.smartdc_role: So 'sdc-login -l graf' works.
 echo "Creating VM ${ALIAS} ..."
 vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
@@ -104,7 +106,7 @@ vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<
     "billing_id": "\${package}",
     "brand": "lx",
     "image_uuid": "${IMAGE_UUID}",
-    "networks": [{"uuid": "\${admin_network_uuid}", "primary": true}],
+    "networks": [{"uuid": "\${admin_network_uuid}"}, {"uuid": "\${external_network_uuid}", "primary": true}],
     "owner_uuid": "\${admin_uuid}",
     "server_uuid": "\${headnode_uuid}",
     "tags": {

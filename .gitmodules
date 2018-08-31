@@ -1,0 +1,3 @@
+[submodule "deps/prometheus"]
+	path = deps/prometheus
+	url = https://github.com/isaacdavis/prometheus.git

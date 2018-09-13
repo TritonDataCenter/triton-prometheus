@@ -62,7 +62,7 @@ fi
 headnode_uuid=$(sysinfo | json UUID)
 admin_uuid=$(sdc-useradm get admin | json uuid)
 
-external_network_uuid=$(sdc-napi /networks?name=external | json -H 0.uuid)
+network_uuid=$(vmadm get $(vmadm lookup alias=~^cmon | head -1) | json nics | json -ac 'nic_tag != "admin"' | json network_uuid)
 admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 
 # Find package
@@ -86,7 +86,7 @@ cns_resolvers=$(dig +noall +answer +short @binder.${prometheus_dc}.${prometheus_
 echo "Admin account: ${admin_uuid}"
 echo "Admin network: ${admin_network_uuid}"
 echo "Headnode: ${headnode_uuid}"
-echo "Network: ${external_network_uuid}"
+echo "Network: ${network_uuid}"
 echo "Package: ${package}"
 echo "Alias: ${ALIAS}"
 echo "CNS Resolvers: ${cns_resolvers}"
@@ -94,7 +94,7 @@ echo "Binder Resolvers: ${binder_resolvers}"
 
 [[ -n "${admin_uuid}" ]] || fatal "missing admin UUID"
 [[ -n "${headnode_uuid}" ]] || fatal "missing headnode UUID"
-[[ -n "${external_network_uuid}" ]] || fatal "missing CMON network UUID"
+[[ -n "${network_uuid}" ]] || fatal "missing CMON network UUID"
 [[ -n "${admin_network_uuid}" ]] || fatal "missing admin network UUID"
 [[ -n "${package}" ]] || fatal "missing package"
 [[ -n "${cns_resolvers}" ]] || fatal "missing CNS resolver"
@@ -112,7 +112,7 @@ vm_uuid=$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<P
     "billing_id": "${package}",
     "brand": "lx",
     "image_uuid": "${IMAGE_UUID}",
-    "networks": [{"uuid": "${admin_network_uuid}"}, {"uuid": "${external_network_uuid}", "primary": true}],
+    "networks": [{"uuid": "${admin_network_uuid}"}, {"uuid": "${network_uuid}", "primary": true}],
     "firewall_enabled": true,
     "owner_uuid": "${admin_uuid}",
     "server_uuid": "${headnode_uuid}",
@@ -149,7 +149,19 @@ openssl x509 -req -days 365 -in prometheus_key.csr.pem -signkey prometheus_key.p
 
 # Generate Config
 prometheus_ip=$(vmadm get ${vm_uuid} | json nics.1.ip)
-cns_zone="${prometheus_dc}.cns.${prometheus_domain}"
+
+cns_url="cns.${prometheus_dc}.${prometheus_domain}"
+owner_uuid=$(sdc-useradm get admin | json uuid)
+cns_result=$(curl -s -X POST -H "Content-Type: application/json" $cns_url/suffixes-for-vm -d @- << JSON
+{
+    "owner_uuid": "${owner_uuid}",
+    "networks": [
+        "${network_uuid}"
+    ]
+}
+JSON
+)
+cmon_zone="cmon.$(echo $cns_result | json suffixes.0 | cut -d. -f3-)"
 
 cp prometheus.yml prometheus.yml.bak
 cat >prometheus.yml <<PROMYML
@@ -174,12 +186,13 @@ scrape_configs:
         target_label: instance
     triton_sd_configs:
       - account: 'admin'
-        dns_suffix: 'cmon.${cns_zone}'
-        endpoint: 'cmon.${cns_zone}'
+        dns_suffix: '${cmon_zone}'
+        endpoint: '${cmon_zone}'
         version: 1
         tls_config:
           cert_file: /root/prometheus/prometheus_key.pub.pem
           key_file: /root/prometheus/prometheus_key.priv.pem
+          insecure_skip_verify: true
 PROMYML
 
 # Generate systemd manifest

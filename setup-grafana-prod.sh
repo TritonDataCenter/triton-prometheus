@@ -54,7 +54,6 @@ fi
 headnode_uuid=$(sysinfo | json UUID)
 admin_uuid=$(sdc-useradm get admin | json uuid)
 
-external_network_uuid=$(sdc-napi /networks?name=external | json -H 0.uuid)
 admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 
 # Find package
@@ -75,7 +74,6 @@ prometheus_ip=$(vmadm lookup -1 alias=prometheus0 -j \
 
 echo "Admin account: ${admin_uuid}"
 echo "Admin network: ${admin_network_uuid}"
-echo "External network: ${external_network_uuid}"
 echo "Headnode: ${headnode_uuid}"
 echo "Package: ${package}"
 echo "Alias: ${ALIAS}"

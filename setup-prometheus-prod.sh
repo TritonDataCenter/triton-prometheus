@@ -52,7 +52,11 @@ if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
 fi
 
 # Setup for CNS to actually work
-sdc-useradm replace-attr admin triton_cns_enabled true </dev/null
+cns_enabled=$(sdc-useradm get admin | json triton_cns_enabled)
+echo "For admin user, existing value of triton_cns_enabled = $cns_enabled"
+if [[ $cns_enabled = 'false' ]]; then
+    sdc-useradm replace-attr admin triton_cns_enabled true </dev/null
+fi
 
 headnode_uuid=$(sysinfo | json UUID)
 admin_uuid=$(sdc-useradm get admin | json uuid)

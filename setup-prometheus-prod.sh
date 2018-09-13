@@ -20,7 +20,7 @@
 IMAGE_UUID="7b5981c4-1889-11e7-b4c5-3f3bdfc9b88b" # LX Ubuntu 16.04
 MIN_MEMORY=1024
 PROMETHEUS_VERSION="2.3.2"
-ALIAS=prometheus1
+ALIAS=prometheus0
 
 if [[ $# -ne 0 ]]; then
     echo "usage: ./setup-prometheus.sh" >&2

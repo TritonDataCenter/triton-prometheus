@@ -48,6 +48,7 @@ vm_uuid=$(vmadm lookup alias=$ALIAS)
 [[ -z "$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
 if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
+    echo "Image ${IMAGE_UUID} not found: importing now; must delete in event of rollback"
     sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
 fi
 

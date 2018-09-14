@@ -18,7 +18,7 @@
 #
 
 IMAGE_UUID="7b5981c4-1889-11e7-b4c5-3f3bdfc9b88b" # LX Ubuntu 16.04
-MIN_MEMORY=1024
+PACKAGE_UUID="4769a8f9-de51-4c1e-885f-c3920cc68137" # sdc_1024
 PROMETHEUS_VERSION="2.3.2"
 ALIAS=prometheus0
 
@@ -66,15 +66,7 @@ network_uuid=$(vmadm get $(vmadm lookup alias=~^cmon | head -1) | json nics | js
 admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 
 # Find package
-package=$(sdc-papi /packages | json -Ha uuid max_physical_memory | sort -n -k 2 \
-    | while read uuid mem; do
-
-    # Find the first one with at least ${MIN_MEMORY}
-    if [[ -z ${pkg} && ${mem} -ge ${MIN_MEMORY} ]]; then
-        pkg=${uuid}
-        echo ${uuid}
-    fi
-done)
+[[ -n $(sdc-papi /packages | json -Ha uuid | grep $PACKAGE_UUID) ]] || fatal "missing package"
 
 # Find CNS resolver(s)
 prometheus_dc=$(bash /lib/sdc/config.sh -json | json datacenter_name)
@@ -87,7 +79,6 @@ echo "Admin account: ${admin_uuid}"
 echo "Admin network: ${admin_network_uuid}"
 echo "Headnode: ${headnode_uuid}"
 echo "Network: ${network_uuid}"
-echo "Package: ${package}"
 echo "Alias: ${ALIAS}"
 echo "CNS Resolvers: ${cns_resolvers}"
 echo "Binder Resolvers: ${binder_resolvers}"
@@ -96,7 +87,6 @@ echo "Binder Resolvers: ${binder_resolvers}"
 [[ -n "${headnode_uuid}" ]] || fatal "missing headnode UUID"
 [[ -n "${network_uuid}" ]] || fatal "missing CMON network UUID"
 [[ -n "${admin_network_uuid}" ]] || fatal "missing admin network UUID"
-[[ -n "${package}" ]] || fatal "missing package"
 [[ -n "${cns_resolvers}" ]] || fatal "missing CNS resolver"
 [[ -n "${binder_resolvers}" ]] || fatal "missing binder resolver"
 
@@ -109,7 +99,7 @@ echo "Creating VM ${ALIAS} ..."
 vm_uuid=$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
 {
     "alias": "${ALIAS}",
-    "billing_id": "${package}",
+    "billing_id": "${PACKAGE_UUID}",
     "brand": "lx",
     "image_uuid": "${IMAGE_UUID}",
     "networks": [{"uuid": "${admin_network_uuid}"}, {"uuid": "${network_uuid}", "primary": true}],

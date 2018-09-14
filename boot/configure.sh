@@ -12,14 +12,6 @@ set -o errexit
 set -o pipefail
 set -o xtrace
 
-# Ensure 'cnsResolvers' IPs get in our resolv.conf for prometheus discovery.
-# This is only necessary because we can't use 'vm.resolvers' because TRITON-605.
-mdata-get cnsResolvers \
-    | sed -e 's/,/\n/' \
-    | while read ip; do
-        grep "^nameserver $ip$" /etc/resolvconf/resolv.conf.d/head >/dev/null 2>&1 \
-            || echo "nameserver $ip" >> /etc/resolvconf/resolv.conf.d/head;
-    done
-resolvconf -u
+# Nothing to do on each boot.
 
 exit 0

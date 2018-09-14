@@ -11,7 +11,7 @@
 -->
 
 <service_bundle type="manifest" name="prometheus">
-  <service name="triton/site/prometheus" type="service" version="7.0.0">
+  <service name="triton/site/prometheus" type="service" version="1.0.0">
 
     <create_default_instance enabled="true"/>
     <single_instance/>
@@ -27,12 +27,13 @@
     <exec_method
       type="method"
       name="start"
-      exec="/opt/triton/prometheus/bin/prometheus &amp;"
+      exec="/opt/triton/prometheus/bin/prometheus --storage.tsdb.path=/data/prometheus/data --config.file=/data/prometheus/etc/prometheus.yml &amp;"
       timeout_seconds="30">
       <method_context working_directory="/opt/triton/prometheus">
+        <!-- nobody XXX -->
         <method_credential user="nobody" group="nobody" privileges="basic,net_privaddr"/>
         <method_environment>
-          <envvar name="PATH" value="/usr/local/bin:/opt/local/bin:/usr/bin:/usr/sbin:/bin"/>
+          <envvar name="PATH" value="/opt/local/bin:/usr/bin:/usr/sbin:/bin"/>
           <envvar name="LD_PRELOAD_32" value="/usr/lib/extendedFILE.so.1" />
         </method_environment>
       </method_context>

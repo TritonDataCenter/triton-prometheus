@@ -54,6 +54,7 @@ fi
 headnode_uuid=$(sysinfo | json UUID)
 admin_uuid=$(sdc-useradm get admin | json uuid)
 
+external_network_uuid=$(sdc-napi /networks?name=external | json -H 0.uuid)
 admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 
 # Find package
@@ -83,7 +84,7 @@ vm_uuid=$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<P
     "billing_id": "${PACKAGE_UUID}",
     "brand": "lx",
     "image_uuid": "${IMAGE_UUID}",
-    "networks": [{"uuid": "${admin_network_uuid}"}],
+    "networks": [{"uuid": "${admin_network_uuid}"}, {"uuid": "${external_network_uuid}", "primary": true}],
     "owner_uuid": "${admin_uuid}",
     "server_uuid": "${headnode_uuid}",
     "tags": {
@@ -111,6 +112,20 @@ curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-
 gtar -zxvf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
 ln -s grafana-${GRAFANA_VERSION} grafana
 cd grafana
+
+# Generate/Register Cert/Key
+openssl req -x509 -nodes -subj "/CN=${grafana_ip}" -newkey rsa:2048 \
+    -keyout grafana_key.pem -out grafana_cert.pem -days 365
+
+cat >./conf/custom.ini <<CONFIGINI
+# config file version
+apiVersion: 1
+
+[server]
+  protocol=https
+  cert_file=/root/grafana/grafana_cert.pem
+  cert_key=/root/grafana/grafana_key.pem
+CONFIGINI
 
 cat >./conf/provisioning/datasources/triton.yaml <<DATAYML
 # config file version
@@ -162,8 +177,13 @@ zlogin ${vm_uuid} "systemctl daemon-reload && systemctl enable grafana && system
 sleep 5
 
 # Set the CNAPI dashboard (for now) as the default org dashboard.
-dashId=$(curl -sSf -u admin:admin "${grafana_ip}:3000/api/search?type=dash-db&query=cnapi" | json 0.id)
-curl -sSf -u admin:admin ${grafana_ip}:3000/api/org/preferences -H content-type:application/json \
+cert="/zones/${vm_uuid}/root/root/grafana/grafana_cert.pem"
+curl -sSf --cacert ${cert} -u admin:admin \
+    "https://${grafana_ip}:3000/api/search?type=dash-db&query=cnapi"
+dashId=$(curl -sSf --cacert ${cert} -u admin:admin \
+    "https://${grafana_ip}:3000/api/search?type=dash-db&query=cnapi" | json 0.id)
+curl -sSf --cacert ${cert} -u admin:admin \
+    "https://${grafana_ip}:3000/api/org/preferences" -H content-type:application/json \
     -d '{"theme":"","homeDashboardId":'$dashId',"timezone":"utc"}' -X PUT
 echo ""
 
@@ -171,4 +191,4 @@ echo ""
 echo ""
 echo "* * * Successfully setup * * *"
 echo "Prometheus: http://${prometheus_ip}:9090/"
-echo "Grafana: http://${grafana_ip}:3000/ (admin:admin)"
+echo "Grafana: https://${grafana_ip}:3000/ (admin:admin)"

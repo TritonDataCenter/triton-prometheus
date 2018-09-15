@@ -23,6 +23,7 @@ PACKAGE_UUID="4769a8f9-de51-4c1e-885f-c3920cc68137" # sdc_1024
 GRAFANA_VERSION="5.2.2"
 ALIAS=grafana0
 PORT=443
+NODE_VERSION="8.12.0"
 
 if [[ $# -ne 0 ]]; then
     echo "usage: ./setup-grafana.sh" >&2
@@ -107,11 +108,17 @@ curl -Lk -o triton-dashboards-master.tgz https://github.com/joyent/triton-dashbo
 gtar -zxvf triton-dashboards-master.tgz
 mv triton-dashboards-master triton-dashboards
 
-# Setup grafana.
+# Setup node and grafana.
 cd /zones/${vm_uuid}/root/root
 curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
 gtar -zxvf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
 ln -s grafana-${GRAFANA_VERSION} grafana
+
+curl -L -kO https://nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz
+gtar -zxvf node-v${NODE_VERSION}-linux-x64.tar.gz
+ln -s node-v${NODE_VERSION}-linux-x64 node
+ln -s /root/node/bin/node /zones/${vm_uuid}/root/usr/bin/node
+
 cd grafana
 
 # Generate/Register Cert/Key
@@ -156,6 +163,70 @@ providers:
         path: /root/triton-dashboards/dashboards
 DASHYML
 
+cat > ./redir.js <<REDIRJS
+#!/usr/bin/env node
+
+/*
+ *
+ * Copyright 2018 Joyent Inc.
+ *
+ * http redirection for grafana.
+ *
+ */
+
+var http = require('http');
+
+if (process.argv.length != 3) {
+  console.error("Usage: node redir.js <redir address>")
+  process.exit(1)
+}
+
+redir_addr=process.argv[2]
+
+http.createServer(function(req, res) {
+  res.statusCode = 301;
+  res.setHeader("Location", redir_addr + req.url);
+  res.end();
+}).listen(80);
+REDIRJS
+
+cat > ./redir.js <<REDIRJS
+#!/usr/bin/env node
+
+/*
+ *
+ * Copyright 2018 Joyent Inc.
+ *
+ * http redirection for grafana.
+ *
+ */
+
+var http = require('http');
+
+if (process.argv.length != 3) {
+  console.error("Usage: node redir.js <redir address>")
+  process.exit(1)
+}
+
+redir_addr=process.argv[2]
+  
+http.createServer(function(req, res) {
+  res.statusCode = 301;
+  res.setHeader("Location", redir_addr + req.url);
+  res.end();
+}).listen(80);
+REDIRJS
+
+chmod 700 ./redir.js
+
+cat > ./wrapper.sh <<WRAPPER
+#!/bin/bash
+/root/grafana/redir.js https://${grafana_ip} &
+/root/grafana/bin/grafana-server
+WRAPPER
+
+chmod 700 ./wrapper.sh
+
 # Generate grafana systemd manifest
 cat >/zones/${vm_uuid}/root/etc/systemd/system/grafana.service <<SYSTEMD
 [Unit]
@@ -165,7 +236,7 @@ cat >/zones/${vm_uuid}/root/etc/systemd/system/grafana.service <<SYSTEMD
 [Service]
 	WorkingDirectory=/root/grafana
 	StandardOutput=syslog
-	ExecStart=/root/grafana/bin/grafana-server
+	ExecStart=/root/grafana/wrapper.sh
 	User=root
 
 [Install]
@@ -201,4 +272,4 @@ echo ""
 echo ""
 echo "* * * Successfully setup * * *"
 echo "Prometheus: http://${prometheus_ip}:9090/"
-echo "Grafana: https://${grafana_ip}:${PORT}/ (username = admin; password in /zones/${vm_uuid}/root/root/grafana/password.txt)"
+echo "Grafana: https://${grafana_ip} (username = admin; password in /zones/${vm_uuid}/root/root/grafana/password.txt)"

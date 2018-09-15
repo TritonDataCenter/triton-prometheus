@@ -22,6 +22,7 @@ IMAGE_UUID="7b5981c4-1889-11e7-b4c5-3f3bdfc9b88b" # LX Ubuntu 16.04
 PACKAGE_UUID="4769a8f9-de51-4c1e-885f-c3920cc68137" # sdc_1024
 GRAFANA_VERSION="5.2.2"
 ALIAS=grafana0
+PORT=443
 
 if [[ $# -ne 0 ]]; then
     echo "usage: ./setup-grafana.sh" >&2
@@ -98,7 +99,7 @@ PAYLOAD
 # Grafana setup.
 #
 
-grafana_ip=$(vmadm get ${vm_uuid} | json nics.0.ip)
+grafana_ip=$(vmadm get ${vm_uuid} | json nics.1.ip)
 
 # Get the latest https://github.com/joyent/triton-dashboards
 cd /zones/${vm_uuid}/root/root
@@ -122,6 +123,7 @@ cat >./conf/custom.ini <<CONFIGINI
 apiVersion: 1
 
 [server]
+  http_port=${PORT}
   protocol=https
   cert_file=/root/grafana/grafana_cert.pem
   cert_key=/root/grafana/grafana_key.pem
@@ -179,16 +181,24 @@ sleep 5
 # Set the CNAPI dashboard (for now) as the default org dashboard.
 cert="/zones/${vm_uuid}/root/root/grafana/grafana_cert.pem"
 curl -sSf --cacert ${cert} -u admin:admin \
-    "https://${grafana_ip}:3000/api/search?type=dash-db&query=cnapi"
+    "https://${grafana_ip}:${PORT}/api/search?type=dash-db&query=cnapi"
 dashId=$(curl -sSf --cacert ${cert} -u admin:admin \
-    "https://${grafana_ip}:3000/api/search?type=dash-db&query=cnapi" | json 0.id)
+    "https://${grafana_ip}:${PORT}/api/search?type=dash-db&query=cnapi" | json 0.id)
 curl -sSf --cacert ${cert} -u admin:admin \
-    "https://${grafana_ip}:3000/api/org/preferences" -H content-type:application/json \
+    "https://${grafana_ip}:${PORT}/api/org/preferences" -H content-type:application/json \
     -d '{"theme":"","homeDashboardId":'$dashId',"timezone":"utc"}' -X PUT
+
+# Change the default password
+pw=$(openssl rand -base64 32 | tr -d "=+/")
+echo $pw > /zones/${vm_uuid}/root/root/grafana/password.txt
+
+curl -sSf --cacert ${cert} -u admin:admin \
+    "https://${grafana_ip}:${PORT}/api/user/password" -H content-type:application/json \
+    -d '{"oldPassword":"admin","newPassword":'\"${pw}\"',"confirmNew":'\"${pw}\"'}' -X PUT
 echo ""
 
 
 echo ""
 echo "* * * Successfully setup * * *"
 echo "Prometheus: http://${prometheus_ip}:9090/"
-echo "Grafana: https://${grafana_ip}:3000/ (admin:admin)"
+echo "Grafana: https://${grafana_ip}:${PORT}/ (username = admin; password in /zones/${vm_uuid}/root/root/grafana/password.txt)"

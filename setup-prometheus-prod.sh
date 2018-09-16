@@ -27,6 +27,7 @@ function usage {
     exit 1
 }
 
+
 insecure_flag="false"
 resolvers=
 host="localhost"
@@ -50,8 +51,6 @@ fi
 if [[ -z ${SSH_OPTS} ]]; then
     SSH_OPTS=""
 fi
-
-echo "installation target: ${host}"
 
 # Code in this block runs on the remote system
 ssh ${SSH_OPTS} ${host} <<EOF

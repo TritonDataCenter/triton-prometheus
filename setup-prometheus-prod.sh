@@ -27,14 +27,10 @@ function usage {
     exit 1
 }
 
-function fatal() {
-    echo "FATAL: $*" >&2
-    exit 1
-}
 
 insecure_flag="false"
 resolvers=
-host=
+host="localhost"
 while getopts ":ir:h:" f; do
     case $f in
         i)  insecure_flag="true"
@@ -52,6 +48,13 @@ if [[ $# -gt 5 ]]; then
     usage
 fi
 
+if [[ -z ${SSH_OPTS} ]]; then
+    SSH_OPTS=""
+fi
+
+# Code in this block runs on the remote system
+ssh ${SSH_OPTS} ${host} <<EOF
+
 set -o errexit
 set -o pipefail
 
@@ -59,14 +62,19 @@ if [[ -n "${TRACE}" ]]; then
     set -o xtrace
 fi
 
+function fatal() {
+    echo "FATAL: \$*" >&2
+    exit 1
+}
+
 . ~/.bash_profile
 
 #
 # prometheus0 zone creation
 #
 
-vm_uuid=$(vmadm lookup alias=$ALIAS)
-[[ -z "$vm_uuid" ]] || fatal "VM $ALIAS already exists"
+vm_uuid=\$(vmadm lookup alias=$ALIAS)
+[[ -z "\$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
 if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
     echo "Image ${IMAGE_UUID} not found: importing now; must delete in event of rollback"
@@ -74,35 +82,35 @@ if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
 fi
 
 # Setup for CNS to actually work
-cns_enabled=$(sdc-useradm get admin | json triton_cns_enabled)
-echo "For admin user, existing value of triton_cns_enabled = $cns_enabled"
-if [[ $cns_enabled = 'false' ]]; then
+cns_enabled=\$(sdc-useradm get admin | json triton_cns_enabled)
+echo "For admin user, existing value of triton_cns_enabled = \$cns_enabled"
+if [[ \$cns_enabled = 'false' ]]; then
     sdc-useradm replace-attr admin triton_cns_enabled true </dev/null
 fi
 
-headnode_uuid=$(sysinfo | json UUID)
-admin_uuid=$(sdc-useradm get admin | json uuid)
+headnode_uuid=\$(sysinfo | json UUID)
+admin_uuid=\$(sdc-useradm get admin | json uuid)
 
-network_uuid=$(vmadm get $(vmadm lookup alias=~^cmon | head -1) | json nics | json -ac 'nic_tag != "admin"' | json network_uuid)
-admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
+network_uuid=\$(vmadm get \$(vmadm lookup alias=~^cmon | head -1) | json nics | json -ac 'nic_tag != "admin"' | json network_uuid)
+admin_network_uuid=\$(sdc-napi /networks?name=admin | json -H 0.uuid)
 
 # Find package
-[[ -n $(sdc-papi /packages | json -Ha uuid | grep $PACKAGE_UUID) ]] || fatal "missing package"
+[[ -n \$(sdc-papi /packages | json -Ha uuid | grep ${PACKAGE_UUID}) ]] || fatal "missing package"
 
 # Find CNS resolver(s)
-prometheus_dc=$(bash /lib/sdc/config.sh -json | json datacenter_name)
-prometheus_domain=$(bash /lib/sdc/config.sh -json | json dns_domain)
+prometheus_dc=\$(bash /lib/sdc/config.sh -json | json datacenter_name)
+prometheus_domain=\$(bash /lib/sdc/config.sh -json | json dns_domain)
 
-echo "Admin account: ${admin_uuid}"
-echo "Admin network: ${admin_network_uuid}"
-echo "Headnode: ${headnode_uuid}"
-echo "Network: ${network_uuid}"
+echo "Admin account: \${admin_uuid}"
+echo "Admin network: \${admin_network_uuid}"
+echo "Headnode: \${headnode_uuid}"
+echo "Network: \${network_uuid}"
 echo "Alias: ${ALIAS}"
 
-[[ -n "${admin_uuid}" ]] || fatal "missing admin UUID"
-[[ -n "${headnode_uuid}" ]] || fatal "missing headnode UUID"
-[[ -n "${network_uuid}" ]] || fatal "missing CMON network UUID"
-[[ -n "${admin_network_uuid}" ]] || fatal "missing admin network UUID"
+[[ -n "\${admin_uuid}" ]] || fatal "missing admin UUID"
+[[ -n "\${headnode_uuid}" ]] || fatal "missing headnode UUID"
+[[ -n "\${network_uuid}" ]] || fatal "missing CMON network UUID"
+[[ -n "\${admin_network_uuid}" ]] || fatal "missing admin network UUID"
 
 # - user-script: Note that until TRITON-605 is resolved, net-agent will likely
 #   be undoing our explicit "resolvers" below. As a workaround we'll have a
@@ -110,20 +118,20 @@ echo "Alias: ${ALIAS}"
 #   alternative to this user-script).
 # - tags.smartdc_role: So 'sdc-login -l prom' works.
 echo "Creating VM ${ALIAS} ..."
-vm_uuid=$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
+vm_uuid=\$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
 {
     "alias": "${ALIAS}",
     "billing_id": "${PACKAGE_UUID}",
     "brand": "lx",
     "image_uuid": "${IMAGE_UUID}",
-    "networks": [{"uuid": "${admin_network_uuid}"}, {"uuid": "${network_uuid}", "primary": true}],
+    "networks": [{"uuid": "\${admin_network_uuid}"}, {"uuid": "\${network_uuid}", "primary": true}],
     "firewall_enabled": true,
-    "owner_uuid": "${admin_uuid}",
-    "server_uuid": "${headnode_uuid}",
-    $(if [[ -n ${resolvers} ]]; then echo "\"resolvers\":[\"$(echo "${resolvers}" | sed -e 's/,/","/g')\"],"; fi)
+    "owner_uuid": "\${admin_uuid}",
+    "server_uuid": "\${headnode_uuid}",
+    \$(if [[ -n "${resolvers}" ]]; then echo "\"resolvers\":[\"\$(echo "${resolvers}" | sed -e 's/,/","/g')\"],"; fi)
     "customer_metadata": {
         "resolvers": "${resolvers}",
-        "user-script": "#!/bin/bash\n\nset -o errexit\nset -o pipefail\nset -o xtrace\n\nmdata-get resolvers | tr , '\n' | while read ip; do\ngrep \"^nameserver \$ip\" /etc/resolvconf/resolv.conf.d/head >/dev/null 2>&1 || [[ -z \$ip ]] || echo \"nameserver \$ip\" >> /etc/resolvconf/resolv.conf.d/head;\n    done\nresolvconf -u\n\nexit 0\n"
+        "user-script": "#!/bin/bash\n\nset -o errexit\nset -o pipefail\nset -o xtrace\n\nmdata-get resolvers | tr , '\n' | while read ip; do\ngrep \"^nameserver \\\$ip\" /etc/resolvconf/resolv.conf.d/head >/dev/null 2>&1 || [[ -z \\\$ip ]] || echo \"nameserver \\\$ip\" >> /etc/resolvconf/resolv.conf.d/head;\n    done\nresolvconf -u\n\nexit 0\n"
     },
     "tags": {
         "smartdc_role": "prometheus"
@@ -137,24 +145,24 @@ PAYLOAD
 #
 
 # Download the bits (since external resolvers not setup in zone)
-cd /zones/${vm_uuid}/root/root
+cd /zones/\${vm_uuid}/root/root
 curl -L -kO https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz
 tar -zxvf prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz
 ln -s prometheus-${PROMETHEUS_VERSION}.linux-amd64 prometheus
 cd prometheus
 
 # Generate/Register Cert/Key
-key_name="${ALIAS}_key_$(date -u +%FT%TZ)"
-ssh-keygen -t rsa -f prometheus_key -C "$key_name" -N ''
+key_name="${ALIAS}_key_\$(date -u +%FT%TZ)"
+ssh-keygen -t rsa -f prometheus_key -C "\$key_name" -N ''
 openssl rsa -in prometheus_key -outform pem >prometheus_key.priv.pem
 openssl req -new -key prometheus_key.priv.pem -out prometheus_key.csr.pem -subj "/CN=admin"
 openssl x509 -req -days 365 -in prometheus_key.csr.pem -signkey prometheus_key.priv.pem -out prometheus_key.pub.pem
-/opt/smartdc/bin/sdc-useradm add-key -n "$key_name" -f admin prometheus_key.pub
+/opt/smartdc/bin/sdc-useradm add-key -n "\$key_name" -f admin prometheus_key.pub
 
 # Generate Config
-prometheus_ip=$(vmadm get ${vm_uuid} | json nics.1.ip)
+prometheus_ip=\$(vmadm get \${vm_uuid} | json nics.1.ip)
 
-cmon_zone="cmon.${prometheus_dc}.${prometheus_domain}"
+cmon_zone="cmon.\${prometheus_dc}.\${prometheus_domain}"
 
 cp prometheus.yml prometheus.yml.bak
 cat >prometheus.yml <<PROMYML
@@ -168,7 +176,7 @@ rule_files:
 # Scrape configuration including cmon
 scrape_configs:
   # The job name is added as a label 'job=<job_name>' to any timeseries scraped from this config.
-  - job_name: 'admin_${prometheus_dc}'
+  - job_name: 'admin_\${prometheus_dc}'
     scheme: https
     tls_config:
       cert_file: /root/prometheus/prometheus_key.pub.pem
@@ -179,8 +187,8 @@ scrape_configs:
         target_label: instance
     triton_sd_configs:
       - account: 'admin'
-        dns_suffix: '${cmon_zone}'
-        endpoint: '${cmon_zone}'
+        dns_suffix: '\${cmon_zone}'
+        endpoint: '\${cmon_zone}'
         version: 1
         tls_config:
           cert_file: /root/prometheus/prometheus_key.pub.pem
@@ -189,7 +197,7 @@ scrape_configs:
 PROMYML
 
 # Generate systemd manifest
-cat >/zones/${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
+cat >/zones/\${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
 [Unit]
     Description=Prometheus server
     After=network.target
@@ -200,7 +208,7 @@ cat >/zones/${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
     ExecStart=/root/prometheus/prometheus \\
         --storage.tsdb.path=/root/prometheus/data \\
         --config.file=/root/prometheus/prometheus.yml \\
-        --web.external-url=http://${prometheus_ip}:9090/
+        --web.external-url=http://\${prometheus_ip}:9090/
     User=root
 
 [Install]
@@ -208,11 +216,13 @@ cat >/zones/${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
 SYSTEMD
 
 
-zlogin ${vm_uuid} "systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus" </dev/null
+zlogin \${vm_uuid} "systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus" </dev/null
 
 echo ""
 echo "* * * Successfully setup * * *"
-echo "Prometheus: http://${prometheus_ip}:9090/"
+echo "Prometheus: http://\${prometheus_ip}:9090/"
 echo ""
 echo "You can setup a grafana0 zone next via:"
 echo "    ./setup-grafana-prod.sh"
+
+EOF

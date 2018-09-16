@@ -25,8 +25,14 @@ ALIAS=grafana0
 PORT=443
 NODE_VERSION="8.12.0"
 
-if [[ $# -ne 0 ]]; then
-    echo "usage: ./setup-grafana.sh" >&2
+if [[ $# -gt 1 ]]; then
+    echo "usage: ./setup-grafana.sh [<non-local server uuid>]" >&2
+    exit 1
+fi
+
+server_uuid=$1
+if [[ -z "$server_uuid" ]]; then
+    server_uuid=$(sysinfo | json UUID) # local headnode by default
 fi
 
 set -o errexit
@@ -46,6 +52,8 @@ function fatal() {
 # grafana0 zone creation
 #
 
+[[ -n $(sdc-server lookup uuid=${server_uuid}) ]] || fatal "Invalid server UUID"
+
 vm_uuid=$(vmadm lookup alias=$ALIAS)
 [[ -z "$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
@@ -53,7 +61,6 @@ if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
     sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
 fi
 
-headnode_uuid=$(sysinfo | json UUID)
 admin_uuid=$(sdc-useradm get admin | json uuid)
 
 external_network_uuid=$(sdc-napi /networks?name=external | json -H 0.uuid)
@@ -69,11 +76,10 @@ prometheus_ip=$(vmadm lookup -1 alias=prometheus0 -j \
 
 echo "Admin account: ${admin_uuid}"
 echo "Admin network: ${admin_network_uuid}"
-echo "Headnode: ${headnode_uuid}"
+echo "Server: ${server_uuid}"
 echo "Alias: ${ALIAS}"
 
 [[ -n "${admin_uuid}" ]] || fatal "missing admin UUID"
-[[ -n "${headnode_uuid}" ]] || fatal "missing headnode UUID"
 [[ -n "${admin_network_uuid}" ]] || fatal "missing admin network UUID"
 
 # - networks: Need the 'admin' to access the prometheus0 zone. Need 'external'
@@ -88,7 +94,7 @@ vm_uuid=$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<P
     "image_uuid": "${IMAGE_UUID}",
     "networks": [{"uuid": "${admin_network_uuid}"}, {"uuid": "${external_network_uuid}", "primary": true}],
     "owner_uuid": "${admin_uuid}",
-    "server_uuid": "${headnode_uuid}",
+    "server_uuid": "${server_uuid}",
     "tags": {
         "smartdc_role": "grafana"
     }

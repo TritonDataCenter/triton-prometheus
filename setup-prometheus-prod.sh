@@ -23,7 +23,7 @@ PROMETHEUS_VERSION="2.3.2"
 ALIAS=prometheus0
 
 function usage {
-    echo "usage: ./setup-prometheus.sh [-i] [-r '<extra resolver 1>,<extra resolver 2>'] [-h <non-local host>]" >&2
+    echo "usage: ./setup-prometheus.sh [-i] [-r '<extra resolver 1>,<extra resolver 2>'] [-s <non-local server uuid>]" >&2
     exit 1
 }
 
@@ -34,14 +34,14 @@ function fatal() {
 
 insecure_flag="false"
 resolvers=
-host=
-while getopts ":ir:h:" f; do
+server_uuid=$(sysinfo | json UUID) # local headnode by default
+while getopts ":ir:s:" f; do
     case $f in
         i)  insecure_flag="true"
             ;;
         r)  resolvers=$(echo $OPTARG | tr -d "\n\t\r ")
             ;;
-        h)  host=$OPTARG
+        s)  server_uuid=$OPTARG
             ;;
         \?) usage
             ;;
@@ -65,6 +65,8 @@ fi
 # prometheus0 zone creation
 #
 
+[[ -n $(sdc-server lookup uuid=${server_uuid}) ]] || fatal "Invalid server UUID"
+
 vm_uuid=$(vmadm lookup alias=$ALIAS)
 [[ -z "$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
@@ -80,7 +82,6 @@ if [[ $cns_enabled = 'false' ]]; then
     sdc-useradm replace-attr admin triton_cns_enabled true </dev/null
 fi
 
-headnode_uuid=$(sysinfo | json UUID)
 admin_uuid=$(sdc-useradm get admin | json uuid)
 
 network_uuid=$(vmadm get $(vmadm lookup alias=~^cmon | head -1) | json nics | json -ac 'nic_tag != "admin"' | json network_uuid)
@@ -95,12 +96,11 @@ prometheus_domain=$(bash /lib/sdc/config.sh -json | json dns_domain)
 
 echo "Admin account: ${admin_uuid}"
 echo "Admin network: ${admin_network_uuid}"
-echo "Headnode: ${headnode_uuid}"
+echo "Server: ${server_uuid}"
 echo "Network: ${network_uuid}"
 echo "Alias: ${ALIAS}"
 
 [[ -n "${admin_uuid}" ]] || fatal "missing admin UUID"
-[[ -n "${headnode_uuid}" ]] || fatal "missing headnode UUID"
 [[ -n "${network_uuid}" ]] || fatal "missing CMON network UUID"
 [[ -n "${admin_network_uuid}" ]] || fatal "missing admin network UUID"
 
@@ -119,7 +119,7 @@ vm_uuid=$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<P
     "networks": [{"uuid": "${admin_network_uuid}"}, {"uuid": "${network_uuid}", "primary": true}],
     "firewall_enabled": true,
     "owner_uuid": "${admin_uuid}",
-    "server_uuid": "${headnode_uuid}",
+    "server_uuid": "${server_uuid}",
     $(if [[ -n ${resolvers} ]]; then echo "\"resolvers\":[\"$(echo "${resolvers}" | sed -e 's/,/","/g')\"],"; fi)
     "customer_metadata": {
         "resolvers": "${resolvers}",

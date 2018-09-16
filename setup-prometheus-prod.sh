@@ -22,8 +22,34 @@ PACKAGE_UUID="4769a8f9-de51-4c1e-885f-c3920cc68137" # sdc_1024
 PROMETHEUS_VERSION="2.3.2"
 ALIAS=prometheus0
 
-if [[ $# -ne 0 ]]; then
-    echo "usage: ./setup-prometheus.sh" >&2
+function usage {
+    echo "usage: ./setup-prometheus.sh [-i] [-r '<extra resolver 1>,<extra resolver 2>'] [-h <non-local host>]" >&2
+    exit 1
+}
+
+function fatal() {
+    echo "FATAL: $*" >&2
+    exit 1
+}
+
+insecure_flag="false"
+resolvers=
+host=
+while getopts ":ir:h:" f; do
+    case $f in
+        i)  insecure_flag="true"
+            ;;
+        r)  resolvers=$(echo $OPTARG | tr -d "\n\t\r ")
+            ;;
+        h)  host=$OPTARG
+            ;;
+        \?) usage
+            ;;
+    esac
+done
+
+if [[ $# -gt 5 ]]; then
+    usage
 fi
 
 set -o errexit
@@ -32,11 +58,6 @@ set -o pipefail
 if [[ -n "${TRACE}" ]]; then
     set -o xtrace
 fi
-
-function fatal() {
-    echo "FATAL: $*" >&2
-    exit 1
-}
 
 . ~/.bash_profile
 
@@ -72,23 +93,16 @@ admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 prometheus_dc=$(bash /lib/sdc/config.sh -json | json datacenter_name)
 prometheus_domain=$(bash /lib/sdc/config.sh -json | json dns_domain)
 
-binder_resolvers=$(dig +short binder.${prometheus_dc}.${prometheus_domain} | tr '\n' ',' | sed -e "s/,$//")
-cns_resolvers=$(dig +noall +answer +short @binder.${prometheus_dc}.${prometheus_domain} cns.${prometheus_dc}.${prometheus_domain} | tr '\n' ',' | sed -e "s/,$//")
-
 echo "Admin account: ${admin_uuid}"
 echo "Admin network: ${admin_network_uuid}"
 echo "Headnode: ${headnode_uuid}"
 echo "Network: ${network_uuid}"
 echo "Alias: ${ALIAS}"
-echo "CNS Resolvers: ${cns_resolvers}"
-echo "Binder Resolvers: ${binder_resolvers}"
 
 [[ -n "${admin_uuid}" ]] || fatal "missing admin UUID"
 [[ -n "${headnode_uuid}" ]] || fatal "missing headnode UUID"
 [[ -n "${network_uuid}" ]] || fatal "missing CMON network UUID"
 [[ -n "${admin_network_uuid}" ]] || fatal "missing admin network UUID"
-[[ -n "${cns_resolvers}" ]] || fatal "missing CNS resolver"
-[[ -n "${binder_resolvers}" ]] || fatal "missing binder resolver"
 
 # - user-script: Note that until TRITON-605 is resolved, net-agent will likely
 #   be undoing our explicit "resolvers" below. As a workaround we'll have a
@@ -106,10 +120,10 @@ vm_uuid=$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<P
     "firewall_enabled": true,
     "owner_uuid": "${admin_uuid}",
     "server_uuid": "${headnode_uuid}",
-    "resolvers": ["$(echo "${cns_resolvers},${binder_resolvers},8.8.8.8" | sed -e 's/,/","/g')"],
+    $(if [[ -n ${resolvers} ]]; then echo "\"resolvers\":[\"$(echo "${resolvers}" | sed -e 's/,/","/g')\"],"; fi)
     "customer_metadata": {
-        "cnsResolvers": "${cns_resolvers}",
-        "user-script": "#!/bin/bash\n\nset -o errexit\nset -o pipefail\nset -o xtrace\n\nmdata-get cnsResolvers | tr , '\n' | while read ip; do\ngrep \"^nameserver \$ip\" /etc/resolvconf/resolv.conf.d/head >/dev/null 2>&1 || echo \"nameserver \$ip\" >> /etc/resolvconf/resolv.conf.d/head;\n    done\nresolvconf -u\n\nexit 0\n"
+        "resolvers": "${resolvers}",
+        "user-script": "#!/bin/bash\n\nset -o errexit\nset -o pipefail\nset -o xtrace\n\nmdata-get resolvers | tr , '\n' | while read ip; do\ngrep \"^nameserver \$ip\" /etc/resolvconf/resolv.conf.d/head >/dev/null 2>&1 || [[ -z \$ip ]] || echo \"nameserver \$ip\" >> /etc/resolvconf/resolv.conf.d/head;\n    done\nresolvconf -u\n\nexit 0\n"
     },
     "tags": {
         "smartdc_role": "prometheus"
@@ -140,18 +154,7 @@ openssl x509 -req -days 365 -in prometheus_key.csr.pem -signkey prometheus_key.p
 # Generate Config
 prometheus_ip=$(vmadm get ${vm_uuid} | json nics.1.ip)
 
-cns_url="cns.${prometheus_dc}.${prometheus_domain}"
-owner_uuid=$(sdc-useradm get admin | json uuid)
-cns_result=$(curl -s -X POST -H "Content-Type: application/json" $cns_url/suffixes-for-vm -d @- << JSON
-{
-    "owner_uuid": "${owner_uuid}",
-    "networks": [
-        "${network_uuid}"
-    ]
-}
-JSON
-)
-cmon_zone="cmon.$(echo $cns_result | json suffixes.0 | cut -d. -f3-)"
+cmon_zone="cmon.${prometheus_dc}.${prometheus_domain}"
 
 cp prometheus.yml prometheus.yml.bak
 cat >prometheus.yml <<PROMYML
@@ -170,7 +173,7 @@ scrape_configs:
     tls_config:
       cert_file: /root/prometheus/prometheus_key.pub.pem
       key_file: /root/prometheus/prometheus_key.priv.pem
-      insecure_skip_verify: true
+      insecure_skip_verify: ${insecure_flag}
     relabel_configs:
       - source_labels: [__meta_triton_machine_alias]
         target_label: instance
@@ -182,7 +185,7 @@ scrape_configs:
         tls_config:
           cert_file: /root/prometheus/prometheus_key.pub.pem
           key_file: /root/prometheus/prometheus_key.priv.pem
-          insecure_skip_verify: true
+          insecure_skip_verify: ${insecure_flag}
 PROMYML
 
 # Generate systemd manifest

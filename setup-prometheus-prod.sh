@@ -84,7 +84,7 @@ fi
 
 admin_uuid=$(sdc-useradm get admin | json uuid)
 
-network_uuid=$(sdc-vmadm get $(sdc-vmadm list alias=~^cmon -H -o uuid | head -1) | json nics | json -ac 'nic_tag != "admin"' | json network_uuid)
+network_uuid=$(sdc-vmadm get $(sdc-vmadm list alias=cmon -H -o uuid | head -1) | json nics | json -ac 'nic_tag != "admin"' | json network_uuid)
 admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 
 # Find package

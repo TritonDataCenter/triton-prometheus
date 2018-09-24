@@ -120,7 +120,7 @@ cd /zones/${vm_uuid}/root/root
 curl -Lk -o triton-dashboards-master.tgz https://github.com/joyent/triton-dashboards/archive/master.tar.gz
 curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
 curl -L -kO https://nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz
-npm install -g --prefix /zones/${vm_uuid}/root/root/node-v${NODE_VERSION}-linux-x64 json
+/opt/local/bin/npm install -g --prefix /zones/${vm_uuid}/root/root/node-v${NODE_VERSION}-linux-x64 json
 SERVER
 
 remote_string="

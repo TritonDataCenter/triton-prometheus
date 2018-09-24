@@ -67,7 +67,7 @@ fi
 
 [[ -n $(sdc-server lookup uuid=${server_uuid}) ]] || fatal "Invalid server UUID"
 
-vm_uuid=$(vmadm lookup alias=$ALIAS)
+vm_uuid=$(sdc-vmadm list alias=$ALIAS -H -o uuid)
 [[ -z "$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
 if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
@@ -84,7 +84,7 @@ fi
 
 admin_uuid=$(sdc-useradm get admin | json uuid)
 
-network_uuid=$(vmadm get $(vmadm lookup alias=~^cmon | head -1) | json nics | json -ac 'nic_tag != "admin"' | json network_uuid)
+network_uuid=$(sdc-vmadm get $(sdc-vmadm list alias=~^cmon -H -o uuid | head -1) | json nics | json -ac 'nic_tag != "admin"' | json network_uuid)
 admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 
 # Find package
@@ -136,7 +136,7 @@ PAYLOAD
 # Prometheus setup.
 #
 
-prometheus_ip=$(vmadm get ${vm_uuid} | json nics.1.ip)
+prometheus_ip=$(sdc-vmadm get ${vm_uuid} | json nics.1.ip)
 cmon_zone="cmon.${prometheus_dc}.${prometheus_domain}"
 
 # Generate and register key

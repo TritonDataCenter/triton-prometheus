@@ -54,7 +54,7 @@ function fatal() {
 
 [[ -n $(sdc-server lookup uuid=${server_uuid}) ]] || fatal "Invalid server UUID"
 
-vm_uuid=$(vmadm lookup alias=$ALIAS)
+vm_uuid=$(sdc-vmadm list alias=$ALIAS -H -o uuid)
 [[ -z "$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
 if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
@@ -69,7 +69,7 @@ admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 # Find package
 [[ -n $(sdc-papi /packages | json -Ha uuid | grep $PACKAGE_UUID) ]] || fatal "missing package"
 
-prometheus_ip=$(vmadm lookup -1 alias=prometheus0 -j \
+prometheus_ip=$(sdc-vmadm list alias=prometheus0 -j \
     | json 0.nics | json -c 'this.nic_tag === "admin"' 0.ip)
 [[ -n "$prometheus_ip" ]] \
     || fatal "could not find prometheus0 zone admin IP: have you setup a prometheus0 zone?"
@@ -106,7 +106,7 @@ PAYLOAD
 # Grafana setup.
 #
 
-grafana_ip=$(vmadm get ${vm_uuid} | json nics.1.ip)
+grafana_ip=$(sdc-vmadm get ${vm_uuid} | json nics.1.ip)
 
 remote_string="
 set -o errexit

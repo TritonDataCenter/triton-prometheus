@@ -59,6 +59,10 @@ if [[ -n "${TRACE}" ]]; then
     set -o xtrace
 fi
 
+if [[ -z ${SSH_OPTS} ]]; then
+    SSH_OPTS=""
+fi
+
 . ~/.bash_profile
 
 #
@@ -138,6 +142,7 @@ PAYLOAD
 
 prometheus_ip=$(sdc-vmadm get ${vm_uuid} | json nics.1.ip)
 cmon_zone="cmon.${prometheus_dc}.${prometheus_domain}"
+server_ip=$(sdc-server ips ${server_uuid} | head -1)
 
 # Generate and register key
 key_name="${ALIAS}_key_$(date -u +%FT%TZ)"
@@ -149,6 +154,13 @@ priv_key_contents=$(<prometheus_key)
 rm prometheus_key.pub
 rm prometheus_key
 
+# Download prometheus into the zone
+ssh ${SSH_OPTS} ${server_ip} <<SERVER
+cd /zones/${vm_uuid}/root/root
+curl -L -kO https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz
+SERVER
+
+
 remote_string="
 set -o errexit
 set -o pipefail
@@ -159,8 +171,7 @@ fi
 
 cd /root
 
-# Download the bits
-curl -L -kO https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz
+# Prometheus tarball was already downloaded above
 tar -zxvf prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz
 ln -s prometheus-${PROMETHEUS_VERSION}.linux-amd64 prometheus
 cd prometheus

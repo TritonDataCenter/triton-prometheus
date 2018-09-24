@@ -136,27 +136,44 @@ PAYLOAD
 # Prometheus setup.
 #
 
-# Download the bits (since external resolvers not setup in zone)
-cd /zones/${vm_uuid}/root/root
+prometheus_ip=$(vmadm get ${vm_uuid} | json nics.1.ip)
+cmon_zone="cmon.${prometheus_dc}.${prometheus_domain}"
+
+# Generate and register key
+key_name="${ALIAS}_key_$(date -u +%FT%TZ)"
+ssh-keygen -t rsa -f prometheus_key -C "$key_name" -N ''
+/opt/smartdc/bin/sdc-useradm add-key -n "$key_name" -f admin prometheus_key.pub
+# Save priv key to transfer to prom vm; delete both keys
+pub_key_contents=$(<prometheus_key.pub)
+priv_key_contents=$(<prometheus_key)
+rm prometheus_key.pub
+rm prometheus_key
+
+remote_string="
+set -o errexit
+set -o pipefail
+
+if [[ -n \""${TRACE}"\" ]]; then
+    set -o xtrace
+fi
+
+cd /root
+
+# Download the bits
 curl -L -kO https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz
 tar -zxvf prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz
 ln -s prometheus-${PROMETHEUS_VERSION}.linux-amd64 prometheus
 cd prometheus
 
-# Generate/Register Cert/Key
-key_name="${ALIAS}_key_$(date -u +%FT%TZ)"
-ssh-keygen -t rsa -f prometheus_key -C "$key_name" -N ''
+# Generate Cert
+echo \""${priv_key_contents}"\" >prometheus_key
 openssl rsa -in prometheus_key -outform pem >prometheus_key.priv.pem
-openssl req -new -key prometheus_key.priv.pem -out prometheus_key.csr.pem -subj "/CN=admin"
+openssl req -new -key prometheus_key.priv.pem -out prometheus_key.csr.pem -subj \"/CN=admin\"
 openssl x509 -req -days 365 -in prometheus_key.csr.pem -signkey prometheus_key.priv.pem -out prometheus_key.pub.pem
-/opt/smartdc/bin/sdc-useradm add-key -n "$key_name" -f admin prometheus_key.pub
-
-# Generate Config
-prometheus_ip=$(vmadm get ${vm_uuid} | json nics.1.ip)
-
-cmon_zone="cmon.${prometheus_dc}.${prometheus_domain}"
 
 cp prometheus.yml prometheus.yml.bak
+
+# Generate Config
 cat >prometheus.yml <<PROMYML
 global:
   scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
@@ -189,7 +206,7 @@ scrape_configs:
 PROMYML
 
 # Generate systemd manifest
-cat >/zones/${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
+cat >/etc/systemd/system/prometheus.service <<SYSTEMD
 [Unit]
     Description=Prometheus server
     After=network.target
@@ -207,8 +224,11 @@ cat >/zones/${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
     WantedBy=multi-user.target
 SYSTEMD
 
+systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus
+"
 
-zlogin ${vm_uuid} "systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus" </dev/null
+echo "executing setup code on prometheus vm..."
+sdc-login ${ALIAS} "${remote_string}"
 
 echo ""
 echo "* * * Successfully setup * * *"

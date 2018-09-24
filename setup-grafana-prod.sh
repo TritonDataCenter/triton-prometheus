@@ -37,8 +37,13 @@ fi
 
 set -o errexit
 set -o pipefail
+
 if [[ -n "${TRACE}" ]]; then
     set -o xtrace
+fi
+
+if [[ -z ${SSH_OPTS} ]]; then
+    SSH_OPTS=""
 fi
 
 function fatal() {
@@ -107,6 +112,16 @@ PAYLOAD
 #
 
 grafana_ip=$(sdc-vmadm get ${vm_uuid} | json nics.1.ip)
+server_ip=$(sdc-server ips ${server_uuid} | head -1)
+
+# Download dashboards, grafana, node into the zone
+ssh ${SSH_OPTS} ${server_ip} <<SERVER
+cd /zones/${vm_uuid}/root/root
+curl -Lk -o triton-dashboards-master.tgz https://github.com/joyent/triton-dashboards/archive/master.tar.gz
+curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+curl -L -kO https://nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz
+npm install -g --prefix /zones/${vm_uuid}/root/root/node-v${NODE_VERSION}-linux-x64 json
+SERVER
 
 remote_string="
 set -o errexit
@@ -118,21 +133,16 @@ fi
 
 cd /root
 
-# Get the latest https://github.com/joyent/triton-dashboards
-curl -Lk -o triton-dashboards-master.tgz https://github.com/joyent/triton-dashboards/archive/master.tar.gz
+# Dashboards, grafana, node already downloaded above
 tar -zxvf triton-dashboards-master.tgz
 mv triton-dashboards-master triton-dashboards
 
-# Setup node and grafana.
-curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
 tar -zxvf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
 ln -s grafana-${GRAFANA_VERSION} grafana
 
-curl -L -kO https://nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz
 tar -zxvf node-v${NODE_VERSION}-linux-x64.tar.gz
 ln -s node-v${NODE_VERSION}-linux-x64 node
 ln -s /root/node/bin/node /usr/bin/node
-/root/node/bin/npm install -g json
 
 cd grafana
 

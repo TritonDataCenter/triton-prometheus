@@ -157,29 +157,17 @@ rm prometheus_key
 # Download prometheus into the zone
 ssh ${SSH_OPTS} ${server_ip} <<SERVER
 cd /zones/${vm_uuid}/root/root
+
+# Download prometheus tarball
 curl -L -kO https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz
-SERVER
-
-
-remote_string="
-set -o errexit
-set -o pipefail
-
-if [[ -n \""${TRACE}"\" ]]; then
-    set -o xtrace
-fi
-
-cd /root
-
-# Prometheus tarball was already downloaded above
 tar -zxvf prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz
 ln -s prometheus-${PROMETHEUS_VERSION}.linux-amd64 prometheus
 cd prometheus
 
 # Generate Cert
-echo \""${priv_key_contents}"\" >prometheus_key
+echo "${priv_key_contents}" > prometheus_key
 openssl rsa -in prometheus_key -outform pem >prometheus_key.priv.pem
-openssl req -new -key prometheus_key.priv.pem -out prometheus_key.csr.pem -subj \"/CN=admin\"
+openssl req -new -key prometheus_key.priv.pem -out prometheus_key.csr.pem -subj "/CN=admin"
 openssl x509 -req -days 365 -in prometheus_key.csr.pem -signkey prometheus_key.priv.pem -out prometheus_key.pub.pem
 
 cp prometheus.yml prometheus.yml.bak
@@ -195,7 +183,7 @@ rule_files:
 
 # Scrape configuration including cmon
 scrape_configs:
-  # The job name is added as a label 'job=\<job_name\>' to any timeseries scraped from this config.
+  # The job name is added as a label 'job=<job_name>' to any timeseries scraped from this config.
   - job_name: 'admin_${prometheus_dc}'
     scheme: https
     tls_config:
@@ -217,7 +205,7 @@ scrape_configs:
 PROMYML
 
 # Generate systemd manifest
-cat >/etc/systemd/system/prometheus.service <<SYSTEMD
+cat > /zones/${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
 [Unit]
     Description=Prometheus server
     After=network.target
@@ -235,15 +223,12 @@ cat >/etc/systemd/system/prometheus.service <<SYSTEMD
     WantedBy=multi-user.target
 SYSTEMD
 
-systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus
-"
-
-echo "executing setup code on prometheus vm..."
-sdc-login ${ALIAS} "${remote_string}"
+zlogin ${vm_uuid} "systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus" < /dev/null
+SERVER
 
 echo ""
 echo "* * * Successfully setup * * *"
 echo "Prometheus: http://${prometheus_ip}:9090/"
 echo ""
 echo "You can setup a grafana0 zone next via:"
-echo "    ./setup-grafana-prod.sh"
+echo "    ./setup-grafana-prod.sh [<non-local server uuid>]"

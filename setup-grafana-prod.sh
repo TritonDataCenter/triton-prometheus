@@ -117,37 +117,25 @@ server_ip=$(sdc-server ips ${server_uuid} | head -1)
 # Download dashboards, grafana, node into the zone
 ssh ${SSH_OPTS} ${server_ip} <<SERVER
 cd /zones/${vm_uuid}/root/root
+
+# Download dashboards, grafana, node
 curl -Lk -o triton-dashboards-master.tgz https://github.com/joyent/triton-dashboards/archive/master.tar.gz
-curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
-curl -L -kO https://nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz
-/opt/local/bin/npm install -g --prefix /zones/${vm_uuid}/root/root/node-v${NODE_VERSION}-linux-x64 json
-SERVER
-
-remote_string="
-set -o errexit
-set -o pipefail
-
-if [[ -n \""${TRACE}"\" ]]; then
-    set -o xtrace
-fi
-
-cd /root
-
-# Dashboards, grafana, node already downloaded above
 tar -zxvf triton-dashboards-master.tgz
 mv triton-dashboards-master triton-dashboards
 
+curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
 tar -zxvf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
 ln -s grafana-${GRAFANA_VERSION} grafana
 
+curl -L -kO https://nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz
 tar -zxvf node-v${NODE_VERSION}-linux-x64.tar.gz
 ln -s node-v${NODE_VERSION}-linux-x64 node
-ln -s /root/node/bin/node /usr/bin/node
+ln -s /root/node/bin/node /zones/${vm_uuid}/root/usr/bin/node
 
 cd grafana
 
 # Generate/Register Cert/Key
-openssl req -x509 -nodes -subj \"/CN=${grafana_ip}\" -newkey rsa:2048 \
+openssl req -x509 -nodes -subj "/CN=${grafana_ip}" -newkey rsa:2048 \
     -keyout grafana_key.pem -out grafana_cert.pem -days 365
 
 cat >./conf/custom.ini <<CONFIGINI
@@ -202,7 +190,7 @@ cat > ./redir.js <<REDIRJS
 var http = require('http');
 
 if (process.argv.length != 3) {
-  console.error(\"Usage: node redir.js <redir address>\")
+  console.error("Usage: node redir.js <redir address>")
   process.exit(1)
 }
 
@@ -210,7 +198,7 @@ redir_addr=process.argv[2]
 
 http.createServer(function(req, res) {
   res.statusCode = 301;
-  res.setHeader(\"Location\", redir_addr + req.url);
+  res.setHeader("Location", redir_addr + req.url);
   res.end();
 }).listen(80);
 REDIRJS
@@ -226,7 +214,7 @@ WRAPPER
 chmod 700 ./wrapper.sh
 
 # Generate grafana systemd manifest
-cat >/etc/systemd/system/grafana.service <<SYSTEMD
+cat > /zones/${vm_uuid}/root/etc/systemd/system/grafana.service <<SYSTEMD
 [Unit]
 	Description=Grafana server
 	After=network.target
@@ -238,36 +226,33 @@ cat >/etc/systemd/system/grafana.service <<SYSTEMD
 	User=root
 
 [Install]
-	WantedBy=multi-user.target
+  WantedBy=multi-user.target
 SYSTEMD
 
-systemctl daemon-reload && systemctl enable grafana && systemctl start grafana && systemctl status grafana
+zlogin ${vm_uuid} "systemctl daemon-reload && systemctl enable grafana && systemctl start grafana && systemctl status grafana" < /dev/null
 
 # Unrefined method to allow grafana to start and provision the dashboards.
 # Would be better to poll the curl attempts below.
 sleep 5
 
 # Set the CNAPI dashboard (for now) as the default org dashboard.
-cert=\"/root/grafana/grafana_cert.pem\"
+cert="/zones/${vm_uuid}/root/root/grafana/grafana_cert.pem"
 curl -sSf --cacert \${cert} -u admin:admin \
-    \"https://${grafana_ip}:${PORT}/api/search?type=dash-db&query=cnapi\"
+    "https://${grafana_ip}:${PORT}/api/search?type=dash-db&query=cnapi"
 dashId=\$(curl -sSf --cacert \${cert} -u admin:admin \
-    \"https://${grafana_ip}:${PORT}/api/search?type=dash-db&query=cnapi\" | /root/node/bin/json 0.id)
+    "https://${grafana_ip}:${PORT}/api/search?type=dash-db&query=cnapi" | json 0.id)
 curl -sSf --cacert \${cert} -u admin:admin \
-    \"https://${grafana_ip}:${PORT}/api/org/preferences\" -H content-type:application/json \
-    -d '{\"theme\":\"\",\"homeDashboardId\":'\$dashId',\"timezone\":\"utc\"}' -X PUT
+    "https://${grafana_ip}:${PORT}/api/org/preferences" -H content-type:application/json \
+    -d '{"theme":"","homeDashboardId":'\$dashId',"timezone":"utc"}' -X PUT
 
 # Change the default password
-pw=\$(openssl rand -base64 32 | tr -d \"=+/\")
-echo \$pw > /root/grafana/password.txt
+pw=\$(openssl rand -base64 32 | tr -d "=+/")
+echo \$pw > /zones/${vm_uuid}/root/root/grafana/password.txt
 
 curl -sSf --cacert \${cert} -u admin:admin \
-    \"https://${grafana_ip}:${PORT}/api/user/password\" -H content-type:application/json \
-    -d '{\"oldPassword\":\"admin\",\"newPassword\":\"'\"\${pw}\"'\",\"confirmNew\":\"'\"\${pw}\"'\"}' -X PUT
-"
-
-echo "executing setup code on grafana vm..."
-sdc-login ${ALIAS} "${remote_string}"
+    "https://${grafana_ip}:${PORT}/api/user/password" -H content-type:application/json \
+    -d '{"oldPassword":"admin","newPassword":'\"\${pw}\"',"confirmNew":'\"\${pw}\"'}' -X PUT
+SERVER
 
 echo ""
 echo "* * * Successfully setup * * *"

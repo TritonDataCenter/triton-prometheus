@@ -94,7 +94,6 @@ admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 # Find package
 [[ -n $(sdc-papi /packages | json -Ha uuid | grep $PACKAGE_UUID) ]] || fatal "missing package"
 
-# Find CNS resolver(s)
 prometheus_dc=$(bash /lib/sdc/config.sh -json | json datacenter_name)
 prometheus_domain=$(bash /lib/sdc/config.sh -json | json dns_domain)
 
@@ -141,8 +140,21 @@ PAYLOAD
 #
 
 prometheus_ip=$(sdc-vmadm get ${vm_uuid} | json nics.1.ip)
-cmon_zone="cmon.${prometheus_dc}.${prometheus_domain}"
 server_ip=$(sdc-server ips ${server_uuid} | head -1)
+
+# Find proper suffix for cmon zone
+cns_url="cns.${prometheus_dc}.${prometheus_domain}"
+owner_uuid=$(sdc-useradm get admin | json uuid)
+cns_result=$(curl -s -X POST -H "Content-Type: application/json" $cns_url/suffixes-for-vm -d @- << JSON
+{
+    "owner_uuid": "${owner_uuid}",
+    "networks": [
+        "${network_uuid}"
+    ]
+}
+JSON
+)
+cmon_zone="cmon.$(echo $cns_result | json suffixes.0 | cut -d. -f3-)"
 
 # Generate and register key
 key_name="${ALIAS}_key_$(date -u +%FT%TZ)"

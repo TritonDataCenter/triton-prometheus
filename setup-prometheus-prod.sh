@@ -68,10 +68,11 @@ fi
 #
 # prometheus0 zone creation
 #
+admin_uuid=$(sdc-useradm get admin | json uuid)
 
 [[ -n $(sdc-server lookup uuid=${server_uuid}) ]] || fatal "Invalid server UUID"
 
-vm_uuid=$(sdc-vmadm list alias=$ALIAS -H -o uuid)
+vm_uuid=$(sdc-vmadm list alias=$ALIAS owner_uuid=${admin_uuid} -H -o uuid)
 [[ -z "$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
 if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
@@ -86,9 +87,7 @@ if [[ $cns_enabled = 'false' ]]; then
     sdc-useradm replace-attr admin triton_cns_enabled true </dev/null
 fi
 
-admin_uuid=$(sdc-useradm get admin | json uuid)
-
-network_uuid=$(sdc-vmadm get $(sdc-vmadm list alias=cmon -H -o uuid | head -1) | json nics | json -ac 'nic_tag != "admin"' | json network_uuid)
+network_uuid=$(sdc-vmadm get $(sdc-vmadm list alias=cmon owner_uuid=${admin_uuid} -H -o uuid | head -1) | json nics | json -ac 'nic_tag != "admin"' | json network_uuid)
 admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 
 # Find package

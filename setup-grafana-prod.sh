@@ -56,17 +56,16 @@ function fatal() {
 #
 # grafana0 zone creation
 #
+admin_uuid=$(sdc-useradm get admin | json uuid)
 
 [[ -n $(sdc-server lookup uuid=${server_uuid}) ]] || fatal "Invalid server UUID"
 
-vm_uuid=$(sdc-vmadm list alias=$ALIAS -H -o uuid)
+vm_uuid=$(sdc-vmadm list alias=$ALIAS owner_uuid=${admin_uuid} -H -o uuid)
 [[ -z "$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
 if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
     sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
 fi
-
-admin_uuid=$(sdc-useradm get admin | json uuid)
 
 external_network_uuid=$(sdc-napi /networks?name=external | json -H 0.uuid)
 admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
@@ -74,7 +73,7 @@ admin_network_uuid=$(sdc-napi /networks?name=admin | json -H 0.uuid)
 # Find package
 [[ -n $(sdc-papi /packages | json -Ha uuid | grep $PACKAGE_UUID) ]] || fatal "missing package"
 
-prometheus_ip=$(sdc-vmadm list alias=prometheus0 -j \
+prometheus_ip=$(sdc-vmadm list alias=prometheus0 owner_uuid=${admin_uuid} -j \
     | json 0.nics | json -c 'this.nic_tag === "admin"' 0.ip)
 [[ -n "$prometheus_ip" ]] \
     || fatal "could not find prometheus0 zone admin IP: have you setup a prometheus0 zone?"

@@ -47,8 +47,10 @@ release: all deps docs $(SMF_MANIFESTS)
 	@echo "Building $(RELEASE_TARBALL)"
 	@mkdir -p $(RELSTAGEDIR)/root/opt/triton/$(SERVICE_NAME)
 	cp -r \
+		$(TOP)/bin \
 		$(TOP)/package.json \
 		$(TOP)/smf \
+		$(TOP)/sapi_manifests \
 		$(RELSTAGEDIR)/root/opt/triton/$(SERVICE_NAME)/
 	# our prometheus build
 	@mkdir -p $(RELSTAGEDIR)/root/opt/triton/$(SERVICE_NAME)/prometheus

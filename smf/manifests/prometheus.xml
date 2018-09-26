@@ -27,7 +27,7 @@
     <exec_method
       type="method"
       name="start"
-      exec="/opt/triton/prometheus/bin/prometheus --storage.tsdb.path=/data/prometheus/data --config.file=/data/prometheus/etc/prometheus.yml &amp;"
+      exec="/opt/triton/prometheus/prometheus/prometheus --storage.tsdb.path=/data/prometheus/data --config.file=/data/prometheus/etc/prometheus.yml &amp;"
       timeout_seconds="30">
       <method_context working_directory="/opt/triton/prometheus">
         <!-- nobody XXX -->

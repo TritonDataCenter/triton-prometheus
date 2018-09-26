@@ -1,0 +1,5 @@
+{
+	"name": "prometheus",
+	"path": "/data/prometheus/etc/service-data.json",
+	"post_cmd": "/opt/triton/prometheus/bin/prometheus-configure"
+}

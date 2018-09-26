@@ -1,0 +1,15 @@
+{
+{{#cmon_url}}
+    "cmon_url": "{{{cmon_url}}}",
+{{/cmon_url}}
+{{#cmon_insecure_skip_verify}}
+    "cmon_insecure_skip_verify": {{{cmon_insecure_skip_verify}}},
+{{/cmon_insecure_skip_verify}}
+
+    {{!
+        Not sure I need the following, but it helps to have a final key without
+        a trailing comma.
+    }}
+    "adminIp": "{{auto.ADMIN_IP}}",
+    "adminUuid": "{{{ufds_admin_uuid}}}"
+}

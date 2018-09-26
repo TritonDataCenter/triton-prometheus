@@ -1,0 +1,103 @@
+#!/bin/bash
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+# Copyright (c) 2018, Joyent, Inc.
+#
+
+#
+# (Re-)generate the Prometheus config and, if changed, (re)start prometheus.
+#
+# It is expected that this is run via the config-agent "prometheus" manifest
+# `post_cmd` (see "/opt/triton/prometheus/sapi_manifests/prometheus").
+# However, running it directly is supported as well.
+#
+
+export PS4='[\D{%FT%TZ}] ${BASH_SOURCE}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+set -o errexit
+set -o pipefail
+set -o xtrace
+
+PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
+
+SERVICE_CONFIG_JSON=/data/prometheus/etc/service-config.json
+
+function prometheus_configure_update_config() {
+    echo "XXX prometheus_configure_update_config"
+    return 1
+}
+
+function prometheus_configure_restart_prom() {
+    echo "XXX prometheus_configure_restart_prom"
+}
+
+
+#XXX
+# A start at getting the appropriate CNS suffix zone for CMON by default
+## Else we want the operator blessed name (which could be the one in CLOUDAPI_SERVICES FWIW).
+#    cns_url=http://cns.$(mdata-get sdc:datacenter_name).$(mdata-get sdc:dns_domain)
+#    owner_uuid=$(mdata-get sdc:owner_uuid)
+#    exteral_network=$(mdata-get sdc:nics | json -c 'this.nic_tag !== "admin"' 0.network_uuid)
+#
+#    curl -X POST -H "Content-Type: application/json" -s $cns_url/suffixes-for-vm -d@/dev/stdin <<PAYLOAD | json
+#    {
+#        "owner_uuid": "$owner_uuid",
+#        "networks": [
+#            "$exteral_network"
+#        ]
+#    }
+#    PAYLOAD
+#
+#    e.g.:
+#    {
+#      "suffixes": [
+#        "svc.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us",
+#        "inst.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us"
+#      ]
+#    }
+
+
+#    # Generate Config
+#    cat >$config_file <<CONFIG
+#global:
+#  scrape_interval:     15s # Default is 1 minute.
+#  evaluation_interval: 15s # Default is 1 minute.
+#  # scrape_timeout is set to the global default (10s).
+#
+#scrape_configs:
+#  # The job name is added as a label 'job=<job_name>' to any timeseries scraped
+#  # from this config.
+#  - job_name: 'admin_${dc_name}'
+#    scheme: https
+#    tls_config:
+#      cert_file: $CLIENT_CERT_FILE
+#      key_file: $PRIV_KEY_FILE
+#      insecure_skip_verify: true
+#    relabel_configs:
+#      - source_labels: [__meta_triton_machine_alias]
+#        target_label: instance
+#    triton_sd_configs:
+#      - account: 'admin'
+#        dns_suffix: 'cmon.$dc_name.cns.$dns_domain'
+#        endpoint: 'cmon.$dc_name.cns.$dns_domain'
+#        version: 1
+#        tls_config:
+#          cert_file: $CLIENT_CERT_FILE
+#          key_file: $PRIV_KEY_FILE
+#          insecure_skip_verify: true
+#CONFIG
+
+# XXX if changed, then enable the service or restart
+#   /usr/sbin/svcadm enable prometheus
+#   ...
+
+
+# ---- mainline
+
+if prometheus_configure_update_config; then
+    prometheus_configure_restart_prom
+fi
+
+exit 0

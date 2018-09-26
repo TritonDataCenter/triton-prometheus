@@ -28,7 +28,7 @@ PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
 #   /data/prometheus/
 #       data/    # TSDB database
 #       etc/     # config file(s)
-#       keys/    # auth keys
+#       keys/    # keys with which to auth with CMON
 #
 PERSIST_DIR=/data/prometheus
 DATA_DIR=$PERSIST_DIR/data
@@ -107,6 +107,48 @@ function prometheus_setup_prometheus {
     #XXX this needed? Used for --web.external-url=http://\${prometheus_ip}:9090/
     #prometheus_ip=\$(vmadm get \${vm_uuid} | json nics.1.ip)
 
+
+#XXX
+# A start at getting the appropriate CNS suffix zone for CMON by default
+## Else we want the operator blessed name (which could be the one in CLOUDAPI_SERVICES FWIW).
+#    cns_url=http://cns.$(mdata-get sdc:datacenter_name).$(mdata-get sdc:dns_domain)
+#    owner_uuid=$(mdata-get sdc:owner_uuid)
+#    exteral_network=$(mdata-get sdc:nics | json -c 'this.nic_tag !== "admin"' 0.network_uuid)
+#
+#    curl -X POST -H "Content-Type: application/json" -s $cns_url/suffixes-for-vm -d@/dev/stdin <<PAYLOAD | json
+#    {
+#        "owner_uuid": "$owner_uuid",
+#        "networks": [
+#            "$exteral_network"
+#        ]
+#    }
+#    PAYLOAD
+#
+#    e.g.:
+#    {
+#      "suffixes": [
+#        "svc.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us",
+#        "inst.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us"
+#      ]
+#    }
+
+# TODO (START HERE):
+# - use that create a service config json file
+# - it runs a /opt/triton/prometheus/bin/prometheus-configure script
+#   that updates the prom YML and restarts prom if changed (and if the prom SMF
+#   service is already imported and enabled)
+# - Q: does output of that config-agent post_cmd script get in the config-agent
+#   log? It would be nice.
+# * * * then on to networking:
+# - ...
+# * * * then other stuff:
+# - TLS and auth support (given that prom will be listening on the external
+#   likely)
+# - see key mgmt TODOs below
+# - 'sdcadm up prometheus' support
+# -
+
+
     # Generate Config
     cat >$config_file <<CONFIG
 global:
@@ -147,7 +189,7 @@ CONFIG
 # config file that will live under /data.
 prometheus_setup_delegate_dataset
 
-# For now the prometheus zone does *not* use config-agent.
+CONFIG_AGENT_LOCAL_MANIFESTS_DIRS=/opt/triton/prometheus
 source /opt/smartdc/boot/lib/util.sh
 sdc_common_setup
 
@@ -167,6 +209,7 @@ prometheus_setup_env
 prometheus_setup_prometheus
 
 # Log rotation.
+sdc_log_rotation_add config-agent /var/svc/log/*config-agent*.log 1g
 sdc_log_rotation_add registrar /var/svc/log/*registrar*.log 1g
 sdc_log_rotation_add prometheus /var/svc/log/*prometheus*.log 1g
 sdc_log_rotation_setup_end

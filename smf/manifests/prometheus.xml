@@ -13,7 +13,7 @@
 <service_bundle type="manifest" name="prometheus">
   <service name="triton/site/prometheus" type="service" version="1.0.0">
 
-    <create_default_instance enabled="true"/>
+    <create_default_instance enabled="false"/>
     <single_instance/>
 
     <dependency name="network" grouping="require_all" restart_on="error" type="service">
@@ -30,7 +30,6 @@
       exec="/opt/triton/prometheus/prometheus/prometheus --storage.tsdb.path=/data/prometheus/data --config.file=/data/prometheus/etc/prometheus.yml &amp;"
       timeout_seconds="30">
       <method_context working_directory="/opt/triton/prometheus">
-        <!-- nobody XXX -->
         <method_credential user="nobody" group="nobody" privileges="basic,net_privaddr"/>
         <method_environment>
           <envvar name="PATH" value="/opt/local/bin:/usr/bin:/usr/sbin:/bin"/>

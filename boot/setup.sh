@@ -35,12 +35,21 @@ DATA_DIR=$PERSIST_DIR/data
 ETC_DIR=$PERSIST_DIR/etc
 KEY_DIR=$PERSIST_DIR/keys
 
-# PEM format private key
+# Key file paths. Keep in sync with "bin/prometheus-configure".
+# - PEM format private key
 PRIV_KEY_FILE=$KEY_DIR/prometheus.id_rsa
-# SSH public key (to be added to admin)
+# - SSH public key (to be added to admin)
 PUB_KEY_FILE=$KEY_DIR/prometheus.id_rsa.pub
-# Public client cert file derived from the key.
+# - Public client cert file derived from the key.
 CLIENT_CERT_FILE=$KEY_DIR/prometheus.cert.pem
+
+
+# ---- internal routines
+
+function fatal {
+    printf '%s: ERROR: %s\n' "$(basename $0)" "$*" >&2
+    exit 1
+}
 
 
 # Mount our delegated dataset at /data.

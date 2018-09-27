@@ -15,6 +15,13 @@
 # However, running it directly is supported as well.
 #
 
+#
+# Dev Notes:
+# - Do we need retries on requests to CNS? Probably yes. Currently determining
+#   the default CMON URL and resolv.conf update for the dev config is brittle
+#   by being dependent on the CNS service being up.
+#
+
 export PS4='[\D{%FT%TZ}] ${BASH_SOURCE}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 set -o errexit
 set -o pipefail
@@ -22,79 +29,218 @@ set -o xtrace
 
 PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
 
+DATACENTER_NAME=
+DNS_DOMAIN=
 SERVICE_CONFIG_JSON=/data/prometheus/etc/service-config.json
+PROMETHEUS_YML=/data/prometheus/etc/prometheus.yml
 
+# Key file paths. Keep in sync with "boot/setup.sh".
+# - PEM format private key
+PRIV_KEY_FILE=/data/prometheus/keys/prometheus.id_rsa
+# - Public client cert file derived from the key.
+CLIENT_CERT_FILE=/data/prometheus/keys/prometheus.cert.pem
+
+
+# ---- support routines
+
+function fatal {
+    printf '%s: ERROR: %s\n' "$(basename $0)" "$*" >&2
+    exit 1
+}
+
+# Attempt to guess an appropriate CMON URL. This setup is appropriate for
+# a development setup.
+function prometheus_configure_get_default_cmon_url() {
+    local cnsUrl
+    local ownerUuid
+    local externalNet
+    local suffixesForVm
+    local cnsStatusCode
+    local suffix
+    local cmonUrl
+
+    # Ask CNS for the DNS suffixes in use for the external (non-admin)
+    # network.
+    #
+    #    e.g.:
+    #    {
+    #      "suffixes": [
+    #        "svc.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us",
+    #        "inst.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us"
+    #      ]
+    #    }
+    cnsUrl=http://cns.$DATACENTER_NAME.$DNS_DOMAIN
+    ownerUuid=$(mdata-get sdc:owner_uuid)
+    exteralNet=$(mdata-get sdc:nics | json -c 'this.nic_tag !== "admin"' 0.network_uuid)
+    [[ -n "$exteralNet" ]] || fatal "could not determine non-admin NIC for this VM"
+    suffixesForVm="$(curl -i -X POST -H "Content-Type: application/json" -s $cnsUrl/suffixes-for-vm -d@/dev/stdin <<PAYLOAD | json
+    {
+        "owner_uuid": "$ownerUuid",
+        "networks": [
+            "$exteralNet"
+        ]
+    }
+PAYLOAD
+)"
+    cnsStatusCode=$(echo "$suffixesForVm" | head -1 | awk '{print $2}')
+    [[ $cnsStatusCode == "200" ]] \
+        || fatal "error retrieving suffixes-for-vm from CNS: status $cnsStatusCode"
+
+    # Then use suffix -- everything after the account UUID -- on the first
+    # "suffixes" entry.
+    suffix=$(echo "$suffixesForVm" | json -H suffixes.0 | cut -d. -f3-)
+
+    cmonUrl="cmon.$suffix"
+    echo "$cmonUrl"
+}
+
+# Ensure that the CNS IP (any will do, we'll use its admin IP because that
+# is easy for us to lookup in binder) is first in this zone's resolv.conf.
+#
+# Limitations:
+# - Just use the first CNS in DNS if there are many.
+# - This doesn't clean out old CNS IPs if that has changed. A better way would
+#   be to construct the whole resolv.conf from scratch.
+#
+function prometheus_configure_ensure_cns_resolver() {
+    local resolvers
+    local binderIp
+    local cnsIp
+
+    resolvers=$(mdata-get sdc:resolvers | json -a)
+    binderIp=$(echo "$resolvers" | head -1)
+
+    # We have to specify the binder IP because (a) `dig` only looks at the
+    # first nameserver in /etc/resolv.conf and (b) we might have the CNS
+    # IP as the first resolver.
+    cnsIp=$(dig @$binderIp +short cns.$DATACENTER_NAME.$DNS_DOMAIN | head -1)
+    [[ -n "$cnsIp" ]] || fatal "could not determine IP for CNS"
+
+    if ! grep " $cnsIp$$" /etc/resolv.conf >/dev/null; then
+        echo "Adding CNS resolver ($cnsIp) to /etc/resolv.conf"
+        cp /etc/resolv.conf /etc/resolv.conf.bak
+        echo "search $DNS_DOMAIN" > /etc/resolv.conf.new
+        # We need this to be the first nameserver line because, e.g., 8.8.8.8
+        # will error out on these internal DNS names.
+        echo "nameserver $cnsIp" >> /etc/resolv.conf.new
+        echo "$resolvers" | while read ip; do
+            echo "nameserver $ip" >> /etc/resolv.conf.new
+        done
+        mv /etc/resolv.conf.new /etc/resolv.conf
+    fi
+
+    return 0
+}
+
+# Update the prometheus config as required (note this may involve updating
+# resolv.conf as well) and return 0 if changes where made, 1 if not.
 function prometheus_configure_update_config() {
-    echo "XXX prometheus_configure_update_config"
-    return 1
+    local cmonUrl
+    local cmonInsecure
+
+    # The appropriate CMON URL is either from the service config, or fallback
+    # to guessing from CNS suffix for admin VMs.
+    cmonUrl=$(json -f $SERVICE_CONFIG_JSON cmon_url)
+    if [[ -z "$cmonUrl" ]]; then
+        cmonUrl=$(prometheus_configure_get_default_cmon_url)
+    cnsUrl=http://cns.$DATACENTER_NAME.$DNS_DOMAIN
+        cmonInsecure=true
+        if [[ -z "$cmonUrl" ]]; then
+            fatal "'cmon_url' service config is not set and could not determine a default CMON URL"
+        fi
+
+        # The "default" CMON URL here is the code path for development
+        # convenience. We only assume that CNS is minimally setup per
+        #     https://github.com/joyent/triton-cns/blob/master/docs/operator-guide.md#small-developmenttesting-setup
+        # To resolve CNS names for CMON we then need CNS' IP in this zone's
+        # resolv.conf (public DNS, e.g. 8.8.8.8, won't know anything about
+        # these domain names).
+        #
+        # Dev Note: An alternative to consider would be to put the CNS IP
+        # in the set of resolvers for the "admin" network. That's an impactful
+        # change, however.
+        prometheus_configure_ensure_cns_resolver
+    else
+        cmonInsecure=$(json -f $SERVICE_CONFIG_JSON cmon_insecure_skip_verify)
+        if [[ -z "$cmonInsecure" ]]; then
+            cmonInsecure=false
+        fi
+    fi
+
+    # Generate the config.
+    cat >${PROMETHEUS_YML}.new <<CONFIG
+global:
+  scrape_interval:     15s # Default is 1 minute.
+  evaluation_interval: 15s # Default is 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+scrape_configs:
+  # The job name is added as a label 'job=<job_name>' to any timeseries scraped
+  # from this config.
+  - job_name: 'admin_${DATACENTER_NAME}'
+    scheme: https
+    tls_config:
+      cert_file: $CLIENT_CERT_FILE
+      key_file: $PRIV_KEY_FILE
+      insecure_skip_verify: $cmonInsecure
+    relabel_configs:
+      - source_labels: [__meta_triton_machine_alias]
+        target_label: alias
+      - source_labels: [__meta_triton_machine_id]
+        target_label: instance
+    triton_sd_configs:
+      - account: 'admin'
+        dns_suffix: '$cmonUrl'
+        endpoint: '$cmonUrl'
+        version: 1
+        tls_config:
+          cert_file: $CLIENT_CERT_FILE
+          key_file: $PRIV_KEY_FILE
+          insecure_skip_verify: $cmonInsecure
+CONFIG
+
+    # Update the config, if changed.
+    if [[ ! -f ${PROMETHEUS_YML} ]]; then
+        # First time config.
+        echo "Writing first time prometheus config ($PROMETHEUS_YML)"
+        mv ${PROMETHEUS_YML}.new ${PROMETHEUS_YML}
+        return 0
+    elif ! diff ${PROMETHEUS_YML} ${PROMETHEUS_YML}.new; then
+        # The config differs.
+        echo "Updating prometheus config ($PROMETHEUS_YML)"
+        cp ${PROMETHEUS_YML} ${PROMETHEUS_YML}.bak
+        mv ${PROMETHEUS_YML}.new ${PROMETHEUS_YML}
+        return 0
+    else
+        echo "Prometheus config has not changed"
+        return 1
+    fi
 }
 
 function prometheus_configure_restart_prom() {
-    echo "XXX prometheus_configure_restart_prom"
+    local currState
+
+    echo "Restarting prometheus SMF service"
+    currState=$(svcs -Ho state prometheus)
+    if [[ "$currState" == "disabled" ]]; then
+        # Zone setup starts with prometheus in disabled state. We enable it
+        # after the config is generated for the first time.
+        svcadm enable prometheus
+    elif [[ "$currState" == "online" ]]; then
+        svcadm restart prometheus
+    elif [[ "$currState" == "maintenance" ]]; then
+        svcadm clear prometheus
+    else
+        fatal "unexpected prometheus service state: '$currState'"
+    fi
 }
 
 
-#XXX
-# A start at getting the appropriate CNS suffix zone for CMON by default
-## Else we want the operator blessed name (which could be the one in CLOUDAPI_SERVICES FWIW).
-#    cns_url=http://cns.$(mdata-get sdc:datacenter_name).$(mdata-get sdc:dns_domain)
-#    owner_uuid=$(mdata-get sdc:owner_uuid)
-#    exteral_network=$(mdata-get sdc:nics | json -c 'this.nic_tag !== "admin"' 0.network_uuid)
-#
-#    curl -X POST -H "Content-Type: application/json" -s $cns_url/suffixes-for-vm -d@/dev/stdin <<PAYLOAD | json
-#    {
-#        "owner_uuid": "$owner_uuid",
-#        "networks": [
-#            "$exteral_network"
-#        ]
-#    }
-#    PAYLOAD
-#
-#    e.g.:
-#    {
-#      "suffixes": [
-#        "svc.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us",
-#        "inst.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us"
-#      ]
-#    }
-
-
-#    # Generate Config
-#    cat >$config_file <<CONFIG
-#global:
-#  scrape_interval:     15s # Default is 1 minute.
-#  evaluation_interval: 15s # Default is 1 minute.
-#  # scrape_timeout is set to the global default (10s).
-#
-#scrape_configs:
-#  # The job name is added as a label 'job=<job_name>' to any timeseries scraped
-#  # from this config.
-#  - job_name: 'admin_${dc_name}'
-#    scheme: https
-#    tls_config:
-#      cert_file: $CLIENT_CERT_FILE
-#      key_file: $PRIV_KEY_FILE
-#      insecure_skip_verify: true
-#    relabel_configs:
-#      - source_labels: [__meta_triton_machine_alias]
-#        target_label: instance
-#    triton_sd_configs:
-#      - account: 'admin'
-#        dns_suffix: 'cmon.$dc_name.cns.$dns_domain'
-#        endpoint: 'cmon.$dc_name.cns.$dns_domain'
-#        version: 1
-#        tls_config:
-#          cert_file: $CLIENT_CERT_FILE
-#          key_file: $PRIV_KEY_FILE
-#          insecure_skip_verify: true
-#CONFIG
-
-# XXX if changed, then enable the service or restart
-#   /usr/sbin/svcadm enable prometheus
-#   ...
-
 
 # ---- mainline
+
+DATACENTER_NAME=$(mdata-get sdc:datacenter_name)
+DNS_DOMAIN=$(mdata-get sdc:dns_domain)
 
 if prometheus_configure_update_config; then
     prometheus_configure_restart_prom

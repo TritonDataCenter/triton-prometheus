@@ -61,8 +61,15 @@ set in SAPI.
 
 | Key                              | Type   | Description |
 | -------------------------------- | ------ | ----------- |
-| **cmon\_url**                    | String | Optional. The base URL at which Prometheus should talk to this DC's CMON. See notes below. |
+| **cmon\_url**                    | String | Optional. The base URL at which Prometheus should talk to this DC's CMON, e.g. "https://cmon.us-east-1.triton.zone:9163". See notes below. |
 | **cmon\_insecure\_skip\_verify** | Bool   | Optional. If `cmon_url` is provided, this can be set to `true` to have Prometheus ignore TLS cert errors from a self-signed cert. |
+
+Prometheus gets its metrics from the DC's local CMON, typically over the
+external network. To auth with CMON properly in a production environment, it
+needs to know the appropriate CMON URL advertized to public DNS and for which
+it has a signed TLS certificate. This is what `cmon_url` is for. If this is
+not specified, then this image will attempt to infer an appropriate URL
+via querying the DC's local CNS. See `bin/prometheus-configure` for details.
 
 
 An example setting these values:

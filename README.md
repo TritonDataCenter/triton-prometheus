@@ -57,7 +57,7 @@ the appropriate DNS zone). The basic process is:
    will also call `prometheus-configure`.
 
 
-# SAPI Configuration
+## SAPI Configuration
 
 There are some Triton Prometheus service configuration options that can be
 set in SAPI.
@@ -80,3 +80,49 @@ An example setting these values:
     promSvc=$(sdc-sapi /services?name=prometheus | json -Ha uuid)
     sdc-sapi /services/$promSvc -X PUT \
         -d '{"metadata": {"cmon_domain": "mycmon.example.com", "cmon_insecure_skip_verify": true}}'
+
+
+## Network and Security
+
+XXX
+
++                // Prometheus needs to be on the external to properly work with
++                // CMON's Triton service discovery and CNS -- at least until CNS
++                // support split horizon DNS to provide separate records on the
++                // admin network. This is because CMON's Triton service
++                // discovery returns the CNS domain names for Triton's core
++                // VMs. (TODO: do I have that right?)
++                //
++                // Triton's Prometheus instances will therefore have a NIC on
++                // CMON's non-admin network. Currently by default that is the
++                // "external" network.
++                //
++                // A firewall will be setup on prometheus0 so that by default no
++                // inbound requests are allowed on that interface.
+
+firewall_enabled=true
+
+
+## Troubleshooting
+
+### Prometheus doesn't have data
+
+Triton's Prometheus gets its data from CMON. Here are some things to check
+if this appears to be failing:
+
+- TODO: a prom query to use as the canonical check that it can talk to CMON
+- Does the Prometheus config (/data/prometheus/etc/prometheus.yml) look correct?
+- Is Prometheus running? `svcs prometheus`
+- Does the Prometheus log show errors? E.g. (newlines added for readability):
+
+    ```
+    $ tail `svcs -L prometheus`
+    ...
+    level=error ts=2018-09-28T18:42:33.715136969Z caller=triton.go:170
+        component="discovery manager scrape"
+        discovery=trition
+        msg="Refreshing targets failed"
+        err="an error occurred when requesting targets from the discovery endpoint.
+            Get https://mycmon.example.com:9163/v1/discover: dial tcp:
+            lookup mycmon.example.com on 8.8.8.8:53: no such host"
+    ```

@@ -201,6 +201,8 @@ scrape_configs:
       insecure_skip_verify: ${insecure_flag}
     relabel_configs:
       - source_labels: [__meta_triton_machine_alias]
+        target_label: alias
+      - source_labels: [__meta_triton_machine_id]
         target_label: instance
     triton_sd_configs:
       - account: 'admin'

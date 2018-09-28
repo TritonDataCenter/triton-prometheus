@@ -116,36 +116,7 @@ function prometheus_setup_prometheus {
     #XXX this needed? Used for --web.external-url=http://\${prometheus_ip}:9090/
     #prometheus_ip=\$(vmadm get \${vm_uuid} | json nics.1.ip)
 
-
-#XXX
-# A start at getting the appropriate CNS suffix zone for CMON by default
-## Else we want the operator blessed name (which could be the one in CLOUDAPI_SERVICES FWIW).
-#    cns_url=http://cns.$(mdata-get sdc:datacenter_name).$(mdata-get sdc:dns_domain)
-#    owner_uuid=$(mdata-get sdc:owner_uuid)
-#    exteral_network=$(mdata-get sdc:nics | json -c 'this.nic_tag !== "admin"' 0.network_uuid)
-#
-#    curl -X POST -H "Content-Type: application/json" -s $cns_url/suffixes-for-vm -d@/dev/stdin <<PAYLOAD | json
-#    {
-#        "owner_uuid": "$owner_uuid",
-#        "networks": [
-#            "$exteral_network"
-#        ]
-#    }
-#    PAYLOAD
-#
-#    e.g.:
-#    {
-#      "suffixes": [
-#        "svc.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us",
-#        "inst.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us"
-#      ]
-#    }
-
 # TODO (START HERE):
-# - use that create a service config json file
-# - it runs a /opt/triton/prometheus/bin/prometheus-configure script
-#   that updates the prom YML and restarts prom if changed (and if the prom SMF
-#   service is already imported and enabled)
 # - Q: does output of that config-agent post_cmd script get in the config-agent
 #   log? It would be nice.
 # * * * then on to networking:
@@ -154,8 +125,7 @@ function prometheus_setup_prometheus {
 # - TLS and auth support (given that prom will be listening on the external
 #   likely)
 # - see key mgmt TODOs below
-# - 'sdcadm up prometheus' support
-# -
+# - 'sdcadm up prometheus' support; I think this is done.
 
 
     # Generate Config

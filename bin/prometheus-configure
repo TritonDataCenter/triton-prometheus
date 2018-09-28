@@ -22,16 +22,18 @@
 #   by being dependent on the CNS service being up.
 #
 
-export PS4='[\D{%FT%TZ}] ${BASH_SOURCE}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+if [[ -n "$TRACE" ]]; then
+    export PS4='[\D{%FT%TZ}] ${BASH_SOURCE}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+    set -o xtrace
+fi
 set -o errexit
 set -o pipefail
-set -o xtrace
 
 PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
 
 DATACENTER_NAME=
 DNS_DOMAIN=
-SERVICE_CONFIG_JSON=/data/prometheus/etc/service-config.json
+SERVICE_DATA_JSON=/data/prometheus/etc/service-data.json
 PROMETHEUS_YML=/data/prometheus/etc/prometheus.yml
 
 # Key file paths. Keep in sync with "boot/setup.sh".
@@ -50,14 +52,14 @@ function fatal {
 
 # Attempt to guess an appropriate CMON URL. This setup is appropriate for
 # a development setup.
-function prometheus_configure_get_default_cmon_url() {
+function prometheus_configure_get_default_cmon_domain() {
     local cnsUrl
     local ownerUuid
     local externalNet
     local suffixesForVm
     local cnsStatusCode
     local suffix
-    local cmonUrl
+    local cmonDomain
 
     # Ask CNS for the DNS suffixes in use for the external (non-admin)
     # network.
@@ -90,42 +92,46 @@ PAYLOAD
     # "suffixes" entry.
     suffix=$(echo "$suffixesForVm" | json -H suffixes.0 | cut -d. -f3-)
 
-    cmonUrl="cmon.$suffix"
-    echo "$cmonUrl"
+    cmonDomain="cmon.$suffix"
+    echo "$cmonDomain"
 }
 
-# Ensure that the CNS IP (any will do, we'll use its admin IP because that
-# is easy for us to lookup in binder) is first in this zone's resolv.conf.
-#
-# Limitations:
-# - Just use the first CNS in DNS if there are many.
-# - This doesn't clean out old CNS IPs if that has changed. A better way would
-#   be to construct the whole resolv.conf from scratch.
-#
-function prometheus_configure_ensure_cns_resolver() {
+function prometheus_configure_update_resolv_conf() {
+    local requireCnsResolver=$1
     local resolvers
     local binderIp
     local cnsIp
 
     resolvers=$(mdata-get sdc:resolvers | json -a)
-    binderIp=$(echo "$resolvers" | head -1)
 
-    # We have to specify the binder IP because (a) `dig` only looks at the
-    # first nameserver in /etc/resolv.conf and (b) we might have the CNS
-    # IP as the first resolver.
-    cnsIp=$(dig @$binderIp +short cns.$DATACENTER_NAME.$DNS_DOMAIN | head -1)
-    [[ -n "$cnsIp" ]] || fatal "could not determine IP for CNS"
+    echo "search $DNS_DOMAIN" > /etc/resolv.conf.new
 
-    if ! grep " $cnsIp$$" /etc/resolv.conf >/dev/null; then
-        echo "Adding CNS resolver ($cnsIp) to /etc/resolv.conf"
-        cp /etc/resolv.conf /etc/resolv.conf.bak
-        echo "search $DNS_DOMAIN" > /etc/resolv.conf.new
+    if [[ "$requireCnsResolver" == "yes" ]]; then
+        # Ensure that the CNS IP (any will do, we'll use its admin IP because
+        # that is easy for us to lookup in binder) is first in this zone's
+        # resolv.conf.
+        # Limitation: This just uses the first CNS in DNS if there are many.
+        #
+        # We have to specify the binder IP because (a) `dig` only looks at the
+        # first nameserver in /etc/resolv.conf and (b) we might have the CNS
+        # IP as the first resolver.
+        binderIp=$(echo "$resolvers" | head -1)
+        cnsIp=$(dig @$binderIp +short cns.$DATACENTER_NAME.$DNS_DOMAIN | head -1)
+        [[ -n "$cnsIp" ]] || fatal "could not determine IP for CNS"
+
         # We need this to be the first nameserver line because, e.g., 8.8.8.8
         # will error out on these internal DNS names.
         echo "nameserver $cnsIp" >> /etc/resolv.conf.new
-        echo "$resolvers" | while read ip; do
-            echo "nameserver $ip" >> /etc/resolv.conf.new
-        done
+    fi
+
+    echo "$resolvers" | while read ip; do
+        echo "nameserver $ip" >> /etc/resolv.conf.new
+    done
+
+
+    if ! diff /etc/resolv.conf /etc/resolv.conf.new >/dev/null; then
+        echo "Updating /etc/resolve.conf (requireCnsResolver=$requireCnsResolver)"
+        cp /etc/resolv.conf /etc/resolv.conf.bak
         mv /etc/resolv.conf.new /etc/resolv.conf
     fi
 
@@ -135,18 +141,18 @@ function prometheus_configure_ensure_cns_resolver() {
 # Update the prometheus config as required (note this may involve updating
 # resolv.conf as well) and return 0 if changes where made, 1 if not.
 function prometheus_configure_update_config() {
-    local cmonUrl
+    local cmonDomain
     local cmonInsecure
+    local requireCnsResolver
 
     # The appropriate CMON URL is either from the service config, or fallback
     # to guessing from CNS suffix for admin VMs.
-    cmonUrl=$(json -f $SERVICE_CONFIG_JSON cmon_url)
-    if [[ -z "$cmonUrl" ]]; then
-        cmonUrl=$(prometheus_configure_get_default_cmon_url)
-    cnsUrl=http://cns.$DATACENTER_NAME.$DNS_DOMAIN
+    cmonDomain=$(json -f $SERVICE_DATA_JSON cmon_domain)
+    if [[ -z "$cmonDomain" ]]; then
+        cmonDomain=$(prometheus_configure_get_default_cmon_domain)
         cmonInsecure=true
-        if [[ -z "$cmonUrl" ]]; then
-            fatal "'cmon_url' service config is not set and could not determine a default CMON URL"
+        if [[ -z "$cmonDomain" ]]; then
+            fatal "'cmon_domain' service config is not set and could not determine a default CMON URL"
         fi
 
         # The "default" CMON URL here is the code path for development
@@ -159,13 +165,17 @@ function prometheus_configure_update_config() {
         # Dev Note: An alternative to consider would be to put the CNS IP
         # in the set of resolvers for the "admin" network. That's an impactful
         # change, however.
-        prometheus_configure_ensure_cns_resolver
+        requireCnsResolver=yes
     else
-        cmonInsecure=$(json -f $SERVICE_CONFIG_JSON cmon_insecure_skip_verify)
+        cmonInsecure=$(json -f $SERVICE_DATA_JSON cmon_insecure_skip_verify)
         if [[ -z "$cmonInsecure" ]]; then
             cmonInsecure=false
         fi
+        requireCnsResolver=no
     fi
+
+    # Update /etc/resolv.conf as appropriate.
+    prometheus_configure_update_resolv_conf $requireCnsResolver
 
     # Generate the config.
     cat >${PROMETHEUS_YML}.new <<CONFIG
@@ -190,8 +200,8 @@ scrape_configs:
         target_label: instance
     triton_sd_configs:
       - account: 'admin'
-        dns_suffix: '$cmonUrl'
-        endpoint: '$cmonUrl'
+        dns_suffix: '$cmonDomain'
+        endpoint: '$cmonDomain'
         version: 1
         tls_config:
           cert_file: $CLIENT_CERT_FILE
@@ -205,7 +215,7 @@ CONFIG
         echo "Writing first time prometheus config ($PROMETHEUS_YML)"
         mv ${PROMETHEUS_YML}.new ${PROMETHEUS_YML}
         return 0
-    elif ! diff ${PROMETHEUS_YML} ${PROMETHEUS_YML}.new; then
+    elif ! diff ${PROMETHEUS_YML} ${PROMETHEUS_YML}.new >/dev/null; then
         # The config differs.
         echo "Updating prometheus config ($PROMETHEUS_YML)"
         cp ${PROMETHEUS_YML} ${PROMETHEUS_YML}.bak
@@ -220,15 +230,17 @@ CONFIG
 function prometheus_configure_restart_prom() {
     local currState
 
-    echo "Restarting prometheus SMF service"
     currState=$(svcs -Ho state prometheus)
     if [[ "$currState" == "disabled" ]]; then
         # Zone setup starts with prometheus in disabled state. We enable it
         # after the config is generated for the first time.
+        echo "Enabling prometheus SMF service"
         svcadm enable prometheus
     elif [[ "$currState" == "online" ]]; then
+        echo "Restarting prometheus SMF service"
         svcadm restart prometheus
     elif [[ "$currState" == "maintenance" ]]; then
+        echo "Clearing prometheus SMF service"
         svcadm clear prometheus
     else
         fatal "unexpected prometheus service state: '$currState'"

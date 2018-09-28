@@ -1,7 +1,7 @@
 {
-{{#cmon_url}}
-    "cmon_url": "{{{cmon_url}}}",
-{{/cmon_url}}
+{{#cmon_domain}}
+    "cmon_domain": "{{{cmon_domain}}}",
+{{/cmon_domain}}
 {{#cmon_insecure_skip_verify}}
     "cmon_insecure_skip_verify": {{{cmon_insecure_skip_verify}}},
 {{/cmon_insecure_skip_verify}}

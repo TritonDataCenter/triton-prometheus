@@ -44,7 +44,7 @@ delegate dataset to persist through reprovisions.
 Like most Triton core VM services, a config-agent is used to gather some
 config data. Unlike many Triton core services, this VM uses an additional
 config processing step to create the final prometheus config. At the
-time of writing this is to allow handling an optional "cmon_url" config var
+time of writing this is to allow handling an optional "cmon_domain" config var
 for which the fallback default requires some processing (querying CNS for
 the appropriate DNS zone). The process is:
 
@@ -61,13 +61,13 @@ set in SAPI.
 
 | Key                              | Type   | Description |
 | -------------------------------- | ------ | ----------- |
-| **cmon\_url**                    | String | Optional. The base URL at which Prometheus should talk to this DC's CMON, e.g. "https://cmon.us-east-1.triton.zone:9163". See notes below. |
-| **cmon\_insecure\_skip\_verify** | Bool   | Optional. If `cmon_url` is provided, this can be set to `true` to have Prometheus ignore TLS cert errors from a self-signed cert. |
+| **cmon\_domain**                 | String | Optional. The domain at which Prometheus should talk to this DC's CMON, e.g. "cmon.us-east-1.triton.zone". The actual endpoint is assumed to be https and port 9163. See notes below. |
+| **cmon\_insecure\_skip\_verify** | Bool   | Optional. If `cmon_domain` is provided, this can be set to `true` to have Prometheus ignore TLS cert errors from a self-signed cert. |
 
 Prometheus gets its metrics from the DC's local CMON, typically over the
 external network. To auth with CMON properly in a production environment, it
 needs to know the appropriate CMON URL advertized to public DNS and for which
-it has a signed TLS certificate. This is what `cmon_url` is for. If this is
+it has a signed TLS certificate. This is what `cmon_domain` is for. If this is
 not specified, then this image will attempt to infer an appropriate URL
 via querying the DC's local CNS. See `bin/prometheus-configure` for details.
 
@@ -76,4 +76,4 @@ An example setting these values:
 
     promSvc=$(sdc-sapi /services?name=prometheus | json -Ha uuid)
     sdc-sapi /services/$promSvc -X PUT \
-        -d '{"metadata": {"cmon_url": "https://mycmon.example.com", "cmon_insecure_skip_verify": true}}'
+        -d '{"metadata": {"cmon_domain": "mycmon.example.com", "cmon_insecure_skip_verify": true}}'

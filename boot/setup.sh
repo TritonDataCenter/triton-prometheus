@@ -92,9 +92,8 @@ function prometheus_setup_key() {
 
 
 function prometheus_setup_env {
-    # Add 'promtool' to the PATH.
     echo "" >>/root/.profile
-    echo "export PATH=/opt/triton/prometheus/prometheus:\$PATH" >>/root/.profile
+    echo "export PATH=/opt/triton/prometheus/bin:/opt/triton/prometheus/prometheus:\$PATH" >>/root/.profile
 }
 
 
@@ -115,14 +114,13 @@ function prometheus_setup_prometheus {
     mkdir -p $ETC_DIR
     mkdir -p $DATA_DIR
 
-
     # This is disabled by default. It is up to 'prometheus-configure' to
     # enable it.
     /usr/sbin/svccfg import /opt/triton/prometheus/smf/manifests/prometheus.xml
 
     # For first time zone setup and for config changes, typically config-agent
-    # will run this. However, this file is on the delegate dataset so for
-    # reprovisions, config-agent might not have a change to make.
+    # will run this. However, this file is on the delegate dataset, so for
+    # reprovisions config-agent might not have a change to make.
     if [[ -f $SAPI_INST_DATA_JSON ]]; then
         TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
     fi
@@ -136,10 +134,6 @@ function prometheus_setup_prometheus {
 # We do this before common setup in case we later have a config-agent-written
 # config file that will live under /data.
 prometheus_setup_delegate_dataset
-
-CONFIG_AGENT_LOCAL_MANIFESTS_DIRS=/opt/triton/prometheus
-source /opt/smartdc/boot/lib/util.sh
-sdc_common_setup
 
 # XXX START HERE
 # - review networking plan
@@ -156,7 +150,15 @@ sdc_common_setup
 prometheus_setup_key
 
 prometheus_setup_env
+
+# Before 'sdc_common_setup' so the prometheus SMF service is imported before
+# config-agent is first setup.
 prometheus_setup_prometheus
+
+
+CONFIG_AGENT_LOCAL_MANIFESTS_DIRS=/opt/triton/prometheus
+source /opt/smartdc/boot/lib/util.sh
+sdc_common_setup
 
 # Log rotation.
 sdc_log_rotation_add config-agent /var/svc/log/*config-agent*.log 1g

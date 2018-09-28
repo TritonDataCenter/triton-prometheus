@@ -46,12 +46,15 @@ config data. Unlike many Triton core services, this VM uses an additional
 config processing step to create the final prometheus config. At the
 time of writing this is to allow handling an optional "cmon_domain" config var
 for which the fallback default requires some processing (querying CNS for
-the appropriate DNS zone). The process is:
+the appropriate DNS zone). The basic process is:
 
-1. config-agent runs to fill out "/data/prometheus/etc/service-data.json"
-2. The config-agent `post_cmd` runs `/opt/triton/prometheus/bin/prometheus-configure`
-   to create the final `/data/prometheus/etc/prometheus.yml` and restart
-   prometheus if changed.
+1. config-agent runs to fill out "/data/prometheus/etc/sapi-inst-data.json"
+2. The config-agent `post_cmd` runs
+   `/opt/triton/prometheus/bin/prometheus-configure` to create the final
+   `/data/prometheus/etc/prometheus.yml` and enable/restart/clear prometheus,
+   if changed. In addition, on *reprovision*, "sapi-inst-data.json" might
+   already exist because it is on a delegate dataset. Therefore, "boot/setup.sh"
+   will also call `prometheus-configure`.
 
 
 # SAPI Configuration

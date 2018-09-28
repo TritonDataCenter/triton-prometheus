@@ -33,7 +33,7 @@ PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
 
 DATACENTER_NAME=
 DNS_DOMAIN=
-SERVICE_DATA_JSON=/data/prometheus/etc/service-data.json
+SAPI_INST_DATA_JSON=/data/prometheus/etc/sapi-inst-data.json
 PROMETHEUS_YML=/data/prometheus/etc/prometheus.yml
 
 # Key file paths. Keep in sync with "boot/setup.sh".
@@ -147,7 +147,7 @@ function prometheus_configure_update_config() {
 
     # The appropriate CMON URL is either from the service config, or fallback
     # to guessing from CNS suffix for admin VMs.
-    cmonDomain=$(json -f $SERVICE_DATA_JSON cmon_domain)
+    cmonDomain=$(json -f $SAPI_INST_DATA_JSON cmon_domain)
     if [[ -z "$cmonDomain" ]]; then
         cmonDomain=$(prometheus_configure_get_default_cmon_domain)
         cmonInsecure=true
@@ -167,7 +167,7 @@ function prometheus_configure_update_config() {
         # change, however.
         requireCnsResolver=yes
     else
-        cmonInsecure=$(json -f $SERVICE_DATA_JSON cmon_insecure_skip_verify)
+        cmonInsecure=$(json -f $SAPI_INST_DATA_JSON cmon_insecure_skip_verify)
         if [[ -z "$cmonInsecure" ]]; then
             cmonInsecure=false
         fi
@@ -254,6 +254,7 @@ function prometheus_configure_restart_prom() {
 DATACENTER_NAME=$(mdata-get sdc:datacenter_name)
 DNS_DOMAIN=$(mdata-get sdc:dns_domain)
 
+# XXX This use in `if` can mask errors due to `set -e`. Redo this.
 if prometheus_configure_update_config; then
     prometheus_configure_restart_prom
 fi

@@ -35,6 +35,8 @@ DATA_DIR=$PERSIST_DIR/data
 ETC_DIR=$PERSIST_DIR/etc
 KEY_DIR=$PERSIST_DIR/keys
 
+SAPI_INST_DATA_JSON=$ETC_DIR/sapi-inst-data.json
+
 # Key file paths. Keep in sync with "bin/prometheus-configure".
 # - PEM format private key
 PRIV_KEY_FILE=$KEY_DIR/prometheus.id_rsa
@@ -113,52 +115,19 @@ function prometheus_setup_prometheus {
     mkdir -p $ETC_DIR
     mkdir -p $DATA_DIR
 
-    #XXX this needed? Used for --web.external-url=http://\${prometheus_ip}:9090/
-    #prometheus_ip=\$(vmadm get \${vm_uuid} | json nics.1.ip)
 
-# TODO (START HERE):
-# - Q: does output of that config-agent post_cmd script get in the config-agent
-#   log? It would be nice.
-# * * * then on to networking:
-# - ...
-# * * * then other stuff:
-# - TLS and auth support (given that prom will be listening on the external
-#   likely)
-# - see key mgmt TODOs below
-# - 'sdcadm up prometheus' support; I think this is done.
-
-
-    # Generate Config
-    cat >$config_file <<CONFIG
-global:
-  scrape_interval:     15s # Default is 1 minute.
-  evaluation_interval: 15s # Default is 1 minute.
-  # scrape_timeout is set to the global default (10s).
-
-scrape_configs:
-  # The job name is added as a label 'job=<job_name>' to any timeseries scraped
-  # from this config.
-  - job_name: 'admin_${dc_name}'
-    scheme: https
-    tls_config:
-      cert_file: $CLIENT_CERT_FILE
-      key_file: $PRIV_KEY_FILE
-      insecure_skip_verify: true
-    relabel_configs:
-      - source_labels: [__meta_triton_machine_alias]
-        target_label: instance
-    triton_sd_configs:
-      - account: 'admin'
-        dns_suffix: 'cmon.$dc_name.cns.$dns_domain'
-        endpoint: 'cmon.$dc_name.cns.$dns_domain'
-        version: 1
-        tls_config:
-          cert_file: $CLIENT_CERT_FILE
-          key_file: $PRIV_KEY_FILE
-          insecure_skip_verify: true
-CONFIG
-
+    # This is disabled by default. It is up to 'prometheus-configure' to
+    # enable it.
     /usr/sbin/svccfg import /opt/triton/prometheus/smf/manifests/prometheus.xml
+
+    # For first time zone setup and for config changes, typically config-agent
+    # will run this. However, this file is on the delegate dataset so for
+    # reprovisions, config-agent might not have a change to make.
+    if [[ -f $SAPI_INST_DATA_JSON ]]; then
+        TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
+    fi
+
+    return 0
 }
 
 
@@ -172,6 +141,8 @@ CONFIG_AGENT_LOCAL_MANIFESTS_DIRS=/opt/triton/prometheus
 source /opt/smartdc/boot/lib/util.sh
 sdc_common_setup
 
+# XXX START HERE
+# - review networking plan
 # TODO:
 # - where to add this key to the 'admin' user?
 # - for scaling/sharding prom: share this certificate key between prom zones?

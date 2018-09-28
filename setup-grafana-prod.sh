@@ -87,7 +87,7 @@ echo "Alias: ${ALIAS}"
 [[ -n "${admin_network_uuid}" ]] || fatal "missing admin network UUID"
 
 # - networks: Need the 'admin' to access the prometheus0 zone. Need 'external'
-#   so, in general, an operator can reach it. WARNING: Need an auth story here.
+#   so, in general, an operator can reach it.
 # - tags.smartdc_role: So 'sdc-login -l graf' works.
 echo "Creating VM ${ALIAS} ..."
 vm_uuid=$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<PAYLOAD
@@ -188,8 +188,8 @@ cat > ./redir.js <<REDIRJS
 
 var http = require('http');
 
-if (process.argv.length != 3) {
-  console.error("Usage: node redir.js <redir address>")
+if (process.argv.length != 2) {
+  console.error("Usage: node redir.js")
   process.exit(1)
 }
 

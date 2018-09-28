@@ -68,11 +68,6 @@ function prometheus_setup_delegate_dataset() {
 
 
 # Setup key and client certificate used to auth with this DC's CMON.
-#
-# Dev Notes:
-# - I'm not sure of the common name to use here. "admin" doesn't
-#   seem correct.
-# - Default to ecdsa? Supported for CMON auth?
 function prometheus_setup_key() {
     local key_name
 
@@ -82,18 +77,29 @@ function prometheus_setup_key() {
         echo "Generating key and client cert for CMON auth"
         mkdir -p $KEY_DIR
         key_name=prometheus-$(zonename | cut -d- -f1)-$(date -u '+%Y%m%dT%H%M%S')
+        # Creating auth keys and cert per CMON docs:
+        # https://github.com/joyent/triton-cmon/blob/master/docs/INSTALLING.md#create-a-certificate-from-your-private-key
         ssh-keygen -t rsa -b 2048 -f $PRIV_KEY_FILE -N "" -C "$key_name"
         openssl req -new -key $PRIV_KEY_FILE -out /tmp/prometheus.csr.pem \
             -subj "/CN=admin"
         openssl x509 -req -days 365 -in /tmp/prometheus.csr.pem \
-            -signkey $PRIV_KEY_FILE -out $CLIENT_CERT_FILE
+            -signkey $PRIV_KEY_FILE -out $CLIENT_CERT_FILES
+
+        # We write our public key to metadata so external tooling (typically
+        # `sdcadm post-setup prometheus`) can add this key to the 'admin'
+        # account for auth to CMON.
+        mdata-put instPubKey < $PUB_KEY_FILE
     fi
+
+    return 0
 }
 
 
 function prometheus_setup_env {
-    echo "" >>/root/.profile
-    echo "export PATH=/opt/triton/prometheus/bin:/opt/triton/prometheus/prometheus:\$PATH" >>/root/.profile
+    if ! grep prometheus /root/.profile >/dev/null; then
+        echo "" >>/root/.profile
+        echo "export PATH=/opt/triton/prometheus/bin:/opt/triton/prometheus/prometheus:\$PATH" >>/root/.profile
+    fi
 }
 
 
@@ -146,7 +152,7 @@ prometheus_setup_delegate_dataset
 #       complain if doesn't have appropriate access. This could check UFDS
 #       or mahi if has this key.
 #   TODO: ticket for key rotation of this key
-#   TODO: chown nobody needed eventually for these /data files?
+#   TODO: chown nobody needed eventually for these /data files
 prometheus_setup_key
 
 prometheus_setup_env

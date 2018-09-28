@@ -82,7 +82,10 @@ An example setting these values:
         -d '{"metadata": {"cmon_domain": "mycmon.example.com", "cmon_insecure_skip_verify": true}}'
 
 
-## Network and Security
+## Auth, Security
+
+A Triton prometheus VM instance will create a key pair and a client certificate
+using that XXX
 
 XXX
 
@@ -105,14 +108,17 @@ firewall_enabled=true
 
 ## Troubleshooting
 
-### Prometheus doesn't have data
+### Prometheus doesn't have Triton data
 
 Triton's Prometheus gets its data from CMON. Here are some things to check
 if this appears to be failing:
 
 - TODO: a prom query to use as the canonical check that it can talk to CMON
+
 - Does the Prometheus config (/data/prometheus/etc/prometheus.yml) look correct?
+
 - Is Prometheus running? `svcs prometheus`
+
 - Does the Prometheus log show errors? E.g. (newlines added for readability):
 
     ```
@@ -125,4 +131,45 @@ if this appears to be failing:
         err="an error occurred when requesting targets from the discovery endpoint.
             Get https://mycmon.example.com:9163/v1/discover: dial tcp:
             lookup mycmon.example.com on 8.8.8.8:53: no such host"
+    ```
+
+- Is Prometheus' Triton service discovery failing? The `promtool debug metrics SERVER`
+  output includes Prometheus' own service discovery attempts.
+
+    ```
+    [root@edbece93-e2da-4ce5-84d6-3e9f5d12131c (coal:prometheus0) ~]# promtool debug metrics http://localhost:9090 | grep prometheus_sd_triton
+    # HELP prometheus_sd_triton_refresh_duration_seconds The duration of a Triton-SD refresh in seconds.
+    # TYPE prometheus_sd_triton_refresh_duration_seconds summary
+    prometheus_sd_triton_refresh_duration_seconds{quantile="0.5"} 0.005636197
+    prometheus_sd_triton_refresh_duration_seconds{quantile="0.9"} 0.010158026
+    prometheus_sd_triton_refresh_duration_seconds{quantile="0.99"} 0.010158026
+    prometheus_sd_triton_refresh_duration_seconds_sum 0.077228126
+    prometheus_sd_triton_refresh_duration_seconds_count 4
+    # HELP prometheus_sd_triton_refresh_failures_total The number of Triton-SD scrape failures.
+    # TYPE prometheus_sd_triton_refresh_failures_total counter
+    prometheus_sd_triton_refresh_failures_total 0
+    ```
+
+    Specifically are there any `prometheus_sd_triton_refresh_failures_total`?
+
+    One reason for failures might be that the Prometheus public key
+    (at "/data/prometheus/etc/prometheus.id_rsa.pub") has not been added to
+    the admin user. See `sdc-useradm keys admin`.
+
+- Are CMON scrapes working?
+
+    ```
+    $ promtool debug metrics http://localhost:9090 | grep prometheus_target_sync_length_seconds_count
+    prometheus_target_sync_length_seconds_count{scrape_job="admin_coal"} 7
+    ```
+
+    TODO: I'm not sure this can show if current scrapes are working. Improve
+    this. Perhaps these?
+
+    ```
+    # HELP promhttp_metric_handler_requests_total Total number of scrapes by HTTP status code.
+    # TYPE promhttp_metric_handler_requests_total counter
+    promhttp_metric_handler_requests_total{code="200"} 11
+    promhttp_metric_handler_requests_total{code="500"} 0
+    promhttp_metric_handler_requests_total{code="503"} 0
     ```

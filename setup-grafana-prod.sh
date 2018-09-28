@@ -111,7 +111,7 @@ PAYLOAD
 #
 
 grafana_ip=$(sdc-vmadm get ${vm_uuid} | json nics.1.ip)
-server_ip=$(sdc-server ips ${server_uuid} | head -1)
+server_ip=$(sdc-server admin-ip ${server_uuid} | head -1)
 
 # Download dashboards, grafana, node into the zone
 ssh ${SSH_OPTS} ${server_ip} <<SERVER
@@ -193,11 +193,9 @@ if (process.argv.length != 3) {
   process.exit(1)
 }
 
-redir_addr=process.argv[2]
-
 http.createServer(function(req, res) {
   res.statusCode = 301;
-  res.setHeader("Location", redir_addr + req.url);
+  res.setHeader("Location", "https://" + req.headers.host + req.url);
   res.end();
 }).listen(80);
 REDIRJS
@@ -206,7 +204,7 @@ chmod 700 ./redir.js
 
 cat > ./wrapper.sh <<WRAPPER
 #!/bin/bash
-/root/grafana/redir.js https://${grafana_ip} &
+/root/grafana/redir.js &
 /root/grafana/bin/grafana-server
 WRAPPER
 

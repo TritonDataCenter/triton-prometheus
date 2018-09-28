@@ -139,7 +139,7 @@ PAYLOAD
 #
 
 prometheus_ip=$(sdc-vmadm get ${vm_uuid} | json nics.1.ip)
-server_ip=$(sdc-server ips ${server_uuid} | head -1)
+server_ip=$(sdc-server admin-ip ${server_uuid} | head -1)
 
 # Find proper suffix for cmon zone
 cns_url="cns.${prometheus_dc}.${prometheus_domain}"
@@ -157,7 +157,7 @@ cmon_zone="cmon.$(echo $cns_result | json suffixes.0 | cut -d. -f3-)"
 
 # Generate and register key
 key_name="${ALIAS}_key_$(date -u +%FT%TZ)"
-ssh-keygen -t rsa -f prometheus_key -C "$key_name" -N ''
+ssh-keygen -t ecdsa -f prometheus_key -C "$key_name" -N ''
 /opt/smartdc/bin/sdc-useradm add-key -n "$key_name" -f admin prometheus_key.pub
 # Save priv key to transfer to prom vm; delete both keys
 pub_key_contents=$(<prometheus_key.pub)
@@ -176,10 +176,8 @@ ln -s prometheus-${PROMETHEUS_VERSION}.linux-amd64 prometheus
 cd prometheus
 
 # Generate Cert
-echo "${priv_key_contents}" > prometheus_key
-openssl rsa -in prometheus_key -outform pem >prometheus_key.priv.pem
-openssl req -new -key prometheus_key.priv.pem -out prometheus_key.csr.pem -subj "/CN=admin"
-openssl x509 -req -days 365 -in prometheus_key.csr.pem -signkey prometheus_key.priv.pem -out prometheus_key.pub.pem
+echo "${priv_key_contents}" > prometheus_key.priv.pem
+openssl req -new -key prometheus_key.priv.pem -out prometheus_key.pub.pem -subj "/CN=admin" -days 3650 -nodes -x509
 
 cp prometheus.yml prometheus.yml.bak
 

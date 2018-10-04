@@ -108,7 +108,9 @@ on the admin.
 Triton's Prometheus gets its data from CMON. Here are some things to check
 if this appears to be failing:
 
-- TODO: a prom query to use as the canonical check that it can talk to CMON
+- Does the following Prometheus query have any data?
+
+        cpucap_cur_usage_percentage{alias=~"cnapi.+"}
 
 - Does the Prometheus config (/data/prometheus/etc/prometheus.yml) look correct?
 
@@ -156,4 +158,3 @@ if this appears to be failing:
     One reason for failures might be that the Prometheus public key
     (at "/data/prometheus/etc/prometheus.id_rsa.pub") has not been added to
     the admin user. See `sdc-useradm keys admin`.
-

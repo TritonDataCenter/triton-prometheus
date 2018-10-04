@@ -1,39 +1,30 @@
 # triton-prometheus
 
-A repo with tooling to setup Prometheus and Grafana in a TritonDC for metrics
-and monitoring of Triton itself. The goal is to make it easy (and somewhat
-standardized, to simplify collaboration) to work with and monitor TritonDC
-metrics.
+The Triton core prometheus service. Triton is moving to using prometheus
+and [grafana](https://github.com/joyent/triton-grafana) to track its own
+metrics and to provide an option for monitoring Triton itself. All Triton
+metrics are gathered via [CMON](https://github.com/joyent/triton-cmon).
+
 
 ## Status
 
-For now this just houses lowly bash scripts for setting up prometheus0
-and grafana0 zones on a Triton headnode. Eventually this might turn into a core
-TritonDC "prometheus" and "grafana" services.
+The Triton core prometheus and grafana services are currently being actively
+developed. [RFD 150](https://github.com/joyent/rfd/tree/master/rfd/0150)
+describes the current plan and status.
 
 
-## How to deploy *development* Prometheus and Grafana for monitoring Triton
+## Setup
 
-(Note: This method is for development and will be deprecated when core
-tooling and images for prom and grafana are available.)
+First ensure that [CMON](https://github.com/joyent/triton-cmon) and
+[CNS](https://github.com/joyent/triton-cns) are setup in your TritonDC,
+typically via:
 
-Run the following from your computer/laptop. Assuming you have something like
-this in your "~/.ssh/config":
+    sdcadm post-setup cns [OPTIONS]
+    sdcadm post-setup cmon [OPTIONS]
 
-	Host coal
-		User root
-		Hostname 10.99.99.7
-		StrictHostKeyChecking no
-		UserKnownHostsFile /dev/null
+Then run the following from your TritonDC's headnode global zone:
 
-Run this:
-
-    ./setup-prometheus.sh coal      # create a prometheus0 zone
-    ./setup-grafana.sh coal         # create a grafana0 zone
-
-Then wait about 5 minutes for metrics to start coming in (I don't know what
-the exact delay is) and visit the grafana URL (it is printed at the end of
-`setup-grafana.sh ...`).
+    sdcadm post-setup prometheus [OPTIONS]
 
 
 ## Configuration

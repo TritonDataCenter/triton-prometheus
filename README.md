@@ -137,43 +137,32 @@ if this appears to be failing:
             lookup mycmon.example.com on 8.8.8.8:53: no such host"
     ```
 
-- Is Prometheus' Triton service discovery failing? The `promtool debug metrics SERVER`
-  output includes Prometheus' own service discovery attempts.
+- Is Prometheus' Triton service discovery authenticating properly to CMON? If
+  not, the CMON log will show something like this:
 
     ```
-    [root@edbece93-e2da-4ce5-84d6-3e9f5d12131c (coal:prometheus0) ~]# promtool debug metrics http://localhost:9090 | grep prometheus_sd_triton
-    # HELP prometheus_sd_triton_refresh_duration_seconds The duration of a Triton-SD refresh in seconds.
-    # TYPE prometheus_sd_triton_refresh_duration_seconds summary
-    prometheus_sd_triton_refresh_duration_seconds{quantile="0.5"} 0.005636197
-    prometheus_sd_triton_refresh_duration_seconds{quantile="0.9"} 0.010158026
-    prometheus_sd_triton_refresh_duration_seconds{quantile="0.99"} 0.010158026
-    prometheus_sd_triton_refresh_duration_seconds_sum 0.077228126
-    prometheus_sd_triton_refresh_duration_seconds_count 4
-    # HELP prometheus_sd_triton_refresh_failures_total The number of Triton-SD scrape failures.
-    # TYPE prometheus_sd_triton_refresh_failures_total counter
-    prometheus_sd_triton_refresh_failures_total 0
-    ```
+    [2018-10-04T22:27:37.632Z]  INFO: cmon/17801 on 2539de9f-43d0-49c4-af79-4f02d53dcdde: handled: 401 (req_id=495dcfb9-054a-48fd-85b4-ed0a1500b9bc, route=getcontainers, audit=true, remoteAddress=10.128.0.10, remotePort=58600, latency=2, _audit=true, req.query="", req.version=*)
+        GET /v1/discover HTTP/1.1
+        host: cmon.coal.cns.joyent.us:9163
+        user-agent: Go-http-client/1.1
+        accept-encoding: gzip
+        --
+        HTTP/1.1 401 Unauthorized
+        content-type: application/json
+        content-length: 41
+        date: Thu, 04 Oct 2018 22:28:37 GMT
+        server: cmon
+        x-request-id: 0a1f7159-39f7-45a6-b724-f9ec68831899
+        x-response-time: 18
+        x-server-name: 2539de9f-43d0-49c4-af79-4f02d53dcdde
 
-    Specifically are there any `prometheus_sd_triton_refresh_failures_total`?
+        {
+          "code": "UnauthorizedError",
+          "message": ""
+        }
+    ```
 
     One reason for failures might be that the Prometheus public key
     (at "/data/prometheus/etc/prometheus.id_rsa.pub") has not been added to
     the admin user. See `sdc-useradm keys admin`.
 
-- Are CMON scrapes working?
-
-    ```
-    $ promtool debug metrics http://localhost:9090 | grep prometheus_target_sync_length_seconds_count
-    prometheus_target_sync_length_seconds_count{scrape_job="admin_coal"} 7
-    ```
-
-    TODO: I'm not sure this can show if current scrapes are working. Improve
-    this. Perhaps these?
-
-    ```
-    # HELP promhttp_metric_handler_requests_total Total number of scrapes by HTTP status code.
-    # TYPE promhttp_metric_handler_requests_total counter
-    promhttp_metric_handler_requests_total{code="200"} 11
-    promhttp_metric_handler_requests_total{code="500"} 0
-    promhttp_metric_handler_requests_total{code="503"} 0
-    ```

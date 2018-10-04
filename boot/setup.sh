@@ -83,7 +83,7 @@ function prometheus_setup_key() {
         openssl req -new -key $PRIV_KEY_FILE -out /tmp/prometheus.csr.pem \
             -subj "/CN=admin"
         openssl x509 -req -days 365 -in /tmp/prometheus.csr.pem \
-            -signkey $PRIV_KEY_FILE -out $CLIENT_CERT_FILES
+            -signkey $PRIV_KEY_FILE -out $CLIENT_CERT_FILE
 
         # We write our public key to metadata so external tooling (typically
         # `sdcadm post-setup prometheus`) can add this key to the 'admin'
@@ -137,24 +137,8 @@ function prometheus_setup_prometheus {
 
 # ---- mainline
 
-# We do this before common setup in case we later have a config-agent-written
-# config file that will live under /data.
 prometheus_setup_delegate_dataset
-
-# XXX START HERE
-# - review networking plan
-# TODO:
-# - where to add this key to the 'admin' user?
-# - for scaling/sharding prom: share this certificate key between prom zones?
-#   TODO: mdata-put it here and 'sdcadm post-setup' can pick it up
-#   TODO: have something in prom zone that can spit out whether this is
-#       configured properly? E.g. the imgapi-status script or something will
-#       complain if doesn't have appropriate access. This could check UFDS
-#       or mahi if has this key.
-#   TODO: ticket for key rotation of this key
-#   TODO: chown nobody needed eventually for these /data files
 prometheus_setup_key
-
 prometheus_setup_env
 
 # Before 'sdc_common_setup' so the prometheus SMF service is imported before

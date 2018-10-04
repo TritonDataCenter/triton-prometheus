@@ -11,7 +11,11 @@ For now this just houses lowly bash scripts for setting up prometheus0
 and grafana0 zones on a Triton headnode. Eventually this might turn into a core
 TritonDC "prometheus" and "grafana" services.
 
-## How to deploy development Prometheus and Grafana for monitoring Triton
+
+## How to deploy *development* Prometheus and Grafana for monitoring Triton
+
+(Note: This method is for development and will be deprecated when core
+tooling and images for prom and grafana are available.)
 
 Run the following from your computer/laptop. Assuming you have something like
 this in your "~/.ssh/config":
@@ -82,28 +86,28 @@ An example setting these values:
         -d '{"metadata": {"cmon_domain": "mycmon.example.com", "cmon_insecure_skip_verify": true}}'
 
 
-## Auth, Security
+## CMON Auth
 
-A Triton prometheus VM instance will create a key pair and a client certificate
-using that XXX
+Prometheus needs to auth with the local CMON. To do this its zone setup creates
+a key and appropriate client certificate in "/data/prometheus/keys/". The
+created public key *must be added to the 'admin' account*. Typically this is
+handled automatically by `sdcadm post-setup prometheus` (VM setup adds its
+public key to its `instPubKey` metadata key, from which sdcadm grabs it).
 
-XXX
 
-+                // Prometheus needs to be on the external to properly work with
-+                // CMON's Triton service discovery and CNS -- at least until CNS
-+                // support split horizon DNS to provide separate records on the
-+                // admin network. This is because CMON's Triton service
-+                // discovery returns the CNS domain names for Triton's core
-+                // VMs. (TODO: do I have that right?)
-+                //
-+                // Triton's Prometheus instances will therefore have a NIC on
-+                // CMON's non-admin network. Currently by default that is the
-+                // "external" network.
-+                //
-+                // A firewall will be setup on prometheus0 so that by default no
-+                // inbound requests are allowed on that interface.
+## Security
 
-firewall_enabled=true
+Prometheus listens on the admin and external networks. The firewall with the
+[standard Triton rules](https://github.com/joyent/sdc-headnode/blob/34dbd8acd65523c844385a81239ea0a872750326/scripts/headnode.sh#L188-L228)
+is enabled to disallow incoming requests on the external network.
+
+Prometheus is on the external network so it can access CMON and work with CNS --
+at least until CNS support split horizon DNS to provide separate records on the
+admin network. This is because CMON's Triton service discovery returns the CNS
+domain names for Triton's core VMs.
+
+Prometheus is on the admin network because Triton's Grafana accesses prometheus
+on the admin.
 
 
 ## Troubleshooting

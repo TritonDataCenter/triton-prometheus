@@ -250,7 +250,7 @@ function prometheus_configure_ensure_nobody_owner() {
         /data/prometheus/data)
     if [[ -n "$output" ]]; then
         UPDATES_MADE="$UPDATES_MADE chown"
-        echo -n "$output"
+        echo "$output"
     fi
 
     return 0

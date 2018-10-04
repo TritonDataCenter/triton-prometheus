@@ -124,7 +124,7 @@ function prometheus_setup_prometheus {
     # enable it.
     /usr/sbin/svccfg import /opt/triton/prometheus/smf/manifests/prometheus.xml
 
-    # For first time zone setup and for config changes, typically config-agent
+    # For first-time zone setup and for config changes, typically config-agent
     # will run this. However, this file is on the delegate dataset, so for
     # reprovisions config-agent might not have a change to make.
     if [[ -f $SAPI_INST_DATA_JSON ]]; then

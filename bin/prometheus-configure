@@ -238,6 +238,24 @@ CONFIG
     return 0
 }
 
+# The prometheus SMF service runs as the 'nobody' user, so the files it
+# accesses must be owned by nobody.
+function prometheus_configure_ensure_nobody_owner() {
+    local output
+
+    output=$(chown -c nobody:nobody \
+        $PROMETHEUS_YML \
+        $PRIV_KEY_FILE \
+        $CLIENT_CERT_FILE \
+        /data/prometheus/data)
+    if [[ -n "$output" ]]; then
+        UPDATES_MADE="$UPDATES_MADE chown"
+        echo -n "$output"
+    fi
+
+    return 0
+}
+
 # Enable/restart/clear prometheus, if necessary. Note: This uses the global
 # "UPDATES_MADE" to determine if config file changes have been made.
 function prometheus_configure_restart_prom() {
@@ -272,6 +290,7 @@ DATACENTER_NAME=$(mdata-get sdc:datacenter_name)
 DNS_DOMAIN=$(mdata-get sdc:dns_domain)
 
 prometheus_configure_update_config
+prometheus_configure_ensure_nobody_owner
 prometheus_configure_restart_prom
 
 exit 0

@@ -13,7 +13,7 @@
 # already exist.
 #
 # Afterwards, it will print the Grafana URL. It is provisioned with the
-# latest dashboards defined in https://github.com/joyent/triton-dashboards.
+# latest dashboards defined in https://github.com/joyent/triton-grafana.
 # It takes a few minutes for the discovery process to complete before
 # you'll see any metrics.
 #
@@ -118,9 +118,9 @@ ssh ${SSH_OPTS} ${server_ip} <<SERVER
 cd /zones/${vm_uuid}/root/root
 
 # Download dashboards, grafana, node
-curl -Lk -o triton-dashboards-master.tgz https://github.com/joyent/triton-dashboards/archive/master.tar.gz
-tar -zxvf triton-dashboards-master.tgz
-mv triton-dashboards-master triton-dashboards
+curl -Lk -o triton-grafana-master.tgz https://github.com/joyent/triton-grafana/archive/master.tar.gz
+tar -zxvf triton-grafana-master.tgz
+mv triton-grafana-master triton-grafana
 
 curl -L -kO https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
 tar -zxvf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
@@ -172,7 +172,7 @@ providers:
       folder: ''
       type: file
       options:
-        path: /root/triton-dashboards/dashboards
+        path: /root/triton-grafana/dashboards
 DASHYML
 
 cat > ./redir.js <<REDIRJS

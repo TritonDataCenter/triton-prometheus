@@ -17,7 +17,7 @@
 #       ./tools/setup-grafana.sh coal
 #
 # Afterwords, it will print the URL to the Grafana. It is provisioned with the
-# latest dashboards defined in https://github.com/joyent/triton-dashboards
+# latest dashboards defined in https://github.com/joyent/triton-grafana
 # It takes a few minutes though for the discovery process to complete before
 # you'll see any metrics.
 #
@@ -123,11 +123,11 @@ PAYLOAD
 
 grafana_ip=\$(vmadm get \${vm_uuid} | json nics | json -c 'this.primary' 0.ip)
 
-# Get the latest https://github.com/joyent/triton-dashboards
+# Get the latest https://github.com/joyent/triton-grafana
 cd /zones/\${vm_uuid}/root/root
-curl -Lk -o triton-dashboards-master.tgz https://github.com/joyent/triton-dashboards/archive/master.tar.gz
-gtar -zxvf triton-dashboards-master.tgz
-mv triton-dashboards-master triton-dashboards
+curl -Lk -o triton-grafana-master.tgz https://github.com/joyent/triton-grafana/archive/master.tar.gz
+gtar -zxvf triton-grafana-master.tgz
+mv triton-grafana-master triton-grafana
 
 # Setup grafana.
 cd /zones/\${vm_uuid}/root/root
@@ -160,7 +160,7 @@ providers:
       folder: ''
       type: file
       options:
-        path: /root/triton-dashboards/dashboards
+        path: /root/triton-grafana/dashboards
 DASHYML
 
 # Generate grafana systemd manifest

@@ -25,6 +25,51 @@ ALIAS=grafana0
 PORT=443
 NODE_VERSION="8.12.0"
 
+function fatal() {
+    echo "FATAL: $*" >&2
+    exit 1
+}
+
+# Necessary to ensure compatibility for servers with LACP - see HEAD-2247
+function get_admin_ip() {
+    sysinfo | /usr/node/bin/node -e "
+    function _getAdminIpSysinfo(sysinfo_object, callback) {
+        var admin_tag = 'admin';
+        var interfaces = sysinfo_object['Network Interfaces'];
+        var adminifaces;
+
+        if (sysinfo_object['Admin NIC Tag']) {
+            admin_tag = sysinfo_object['Admin NIC Tag'];
+        }
+
+        adminifaces = Object.keys(interfaces).filter(function (iface) {
+            return interfaces[iface]['NIC Names'].indexOf(admin_tag) !== -1;
+        });
+
+        if (adminifaces && adminifaces.length !== 0) {
+            callback(null, interfaces[adminifaces[0]]['ip4addr']);
+            return;
+        }
+
+        callback(new Error('No admin NIC found with tag ' +
+            admin_tag + ' in compute node sysinfo'));
+    }
+
+    var chunks = [];
+    process.stdin.on('data', function (chunk) { chunks.push(chunk) });
+    process.stdin.on('close', function () {
+        var sysinfo = JSON.parse(chunks.join(''));
+        _getAdminIpSysinfo(sysinfo, function (err, adminIp) {
+            if (err) {
+                throw err;
+            } else {
+                console.log(adminIp);
+            }
+        });
+    });
+    "
+}
+
 if [[ $# -gt 1 ]]; then
     echo "usage: ./setup-grafana.sh [<non-local server uuid>]" >&2
     exit 1
@@ -45,11 +90,6 @@ fi
 if [[ -z ${SSH_OPTS} ]]; then
     SSH_OPTS=""
 fi
-
-function fatal() {
-    echo "FATAL: $*" >&2
-    exit 1
-}
 
 . ~/.bash_profile
 
@@ -111,7 +151,7 @@ PAYLOAD
 #
 
 grafana_ip=$(sdc-vmadm get ${vm_uuid} | json nics.1.ip)
-server_ip=$(sdc-server admin-ip ${server_uuid} | head -1)
+server_ip=$(get_admin_ip)
 
 # Download dashboards, grafana, node into the zone
 ssh ${SSH_OPTS} ${server_ip} <<SERVER

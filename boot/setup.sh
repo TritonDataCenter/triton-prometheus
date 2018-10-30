@@ -12,8 +12,8 @@
 #
 # It is expected that this is run via the standard Triton user-script,
 # i.e. as part of the "mdata:execute" SMF service. That user-script ensures
-# this setup.sh is run once for each (re)provision of the image. However
-# script should also attempt to be idempotent.
+# this setup.sh is run once for each (re)provision of the image. However this
+# script should also be idempotent.
 #
 
 export PS4='[\D{%FT%TZ}] ${BASH_SOURCE}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
@@ -124,9 +124,10 @@ function prometheus_setup_prometheus {
     # enable it.
     /usr/sbin/svccfg import /opt/triton/prometheus/smf/manifests/prometheus.xml
 
-    # For first-time zone setup and for config changes, typically config-agent
-    # will run this. However, this file is on the delegate dataset, so for
-    # reprovisions config-agent might not have a change to make.
+    # 'prometheus-configure' is typically run by config-agent via the template
+    # 'post_cmd' (for first-time zone setup and for config changes). However,
+    # this file is on the delegate dataset, so for reprovisions config-agent
+    # might not have a change to make.
     if [[ -f $SAPI_INST_DATA_JSON ]]; then
         TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
     fi

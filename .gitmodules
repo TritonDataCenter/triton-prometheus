@@ -1,6 +1,6 @@
 [submodule "deps/prometheus"]
 	path = deps/prometheus
-	url = https://github.com/isaacdavis/prometheus.git
+	url = https://github.com/joyent/prometheus.git
 [submodule "deps/sdc-scripts"]
 	path = deps/sdc-scripts
 	url = https://github.com/joyent/sdc-scripts.git

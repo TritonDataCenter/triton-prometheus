@@ -308,6 +308,7 @@ function prometheus_configure_restart_prom() {
 DATACENTER_NAME=$(mdata-get sdc:datacenter_name)
 DNS_DOMAIN=$(mdata-get sdc:dns_domain)
 
+prometheus_configure_setup_key
 prometheus_configure_update_config
 prometheus_configure_ensure_nobody_owner
 prometheus_configure_restart_prom

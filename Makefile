@@ -71,6 +71,7 @@ release: all deps docs $(SMF_MANIFESTS)
 	cp -r \
 		$(TOP)/bin \
 		$(TOP)/package.json \
+		$(TOP)/node_modules \
 		$(TOP)/smf \
 		$(TOP)/sapi_manifests \
 		$(RELSTAGEDIR)/root/opt/triton/$(SERVICE_NAME)/

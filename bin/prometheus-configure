@@ -32,6 +32,8 @@ set -o pipefail
 
 PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
 
+NODE=/opt/triton/prometheus/build/node/bin/node_modules
+
 DATACENTER_NAME=
 DNS_DOMAIN=
 SAPI_INST_DATA_JSON=/data/prometheus/etc/sapi-inst-data.json
@@ -41,11 +43,12 @@ PROMETHEUS_YML=/data/prometheus/etc/prometheus.yml
 # if the prometheus SMF service needs to be restarted.
 UPDATES_MADE=
 
-# Key file paths. Keep in sync with "boot/setup.sh".
+# Key file paths. Keep in sync with "bin/certgen".
+KEY_DIR=/data/prometheus/keys
 # - PEM format private key
-PRIV_KEY_FILE=/data/prometheus/keys/prometheus.id_rsa
+PRIV_KEY_FILE=${KEY_DIR}/prometheus.key.pem
 # - Public client cert file derived from the key.
-CLIENT_CERT_FILE=/data/prometheus/keys/prometheus.cert.pem
+CLIENT_CERT_FILE=${KEY_DIR}/prometheus.cert.pem
 
 
 # ---- support routines
@@ -54,6 +57,22 @@ function fatal {
     printf '%s: ERROR: %s\n' "$(basename $0)" "$*" >&2
     exit 1
 }
+
+
+# Setup key and client certificate used to auth with this DC's CMON.
+function prometheus_configure_setup_key() {
+
+    if [[ -f "$CLIENT_CERT_FILE" && -f "$PRIV_KEY_FILE" ]]; then
+        echo "Key files already exist: $CLIENT_CERT_FILE, $PRIV_KEY_FILE"
+    else
+        echo "Generating key and client cert for CMON auth"
+        mkdir -p $KEY_DIR
+        ${NODE} "--abort_on_uncaught_exception" \
+            /opt/triton/prometheus/bin/certgen
+        return $?
+    fi
+}
+
 
 # Attempt to guess an appropriate CMON URL. This setup is appropriate for
 # a development setup.

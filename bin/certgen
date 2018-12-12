@@ -34,10 +34,10 @@ const USER = 'admin';
 const ROOT_PUB_KEY_PATH = '/root/.ssh/sdc.id_rsa.pub';
 const ROOT_PRIV_KEY_PATH = '/root/.ssh/sdc.id_rsa';
 
-const PERSIST_DIR = '/data/prometheus';
-const KEY_DIR = PERSIST_DIR + '/keys';
-const KEY_OUTPUT_FILE = KEY_DIR + '/prom-key.pem';
-const CERT_OUTPUT_FILE = KEY_DIR + '/prom-cert.pem';
+// Key file paths. Keep in sync with "bin/prometheus-configure".
+const KEY_DIR = '/data/prometheus/keys';
+const KEY_OUTPUT_FILE = KEY_DIR + '/prometheus.key.pem';
+const CERT_OUTPUT_FILE = KEY_DIR + '/prometheus.cert.pem';
 
 const log = bunyan.createLogger({
     name: 'certgen'

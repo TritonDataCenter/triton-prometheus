@@ -23,8 +23,6 @@ set -o xtrace
 
 PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
 
-NODE=/opt/triton/prometheus/build/node/bin/node
-
 # Prometheus data is stored on its delegate dataset:
 #
 #   /data/prometheus/
@@ -35,19 +33,20 @@ NODE=/opt/triton/prometheus/build/node/bin/node
 PERSIST_DIR=/data/prometheus
 DATA_DIR=$PERSIST_DIR/data
 ETC_DIR=$PERSIST_DIR/etc
-KEY_DIR=$PERSIST_DIR/keys
 
 SAPI_INST_DATA_JSON=$ETC_DIR/sapi-inst-data.json
 
-# Key file paths. Keep in sync with "bin/prometheus-configure" and
-# "bin/certgen".
-# - PEM format private key
-PRIV_KEY_FILE=$KEY_DIR/prometheus.id_rsa
-# - SSH public key (to be added to admin)
-PUB_KEY_FILE=$KEY_DIR/prometheus.id_rsa.pub
-# - Public client cert file derived from the key.
-CLIENT_CERT_FILE=$KEY_DIR/prometheus.cert.pem
-
+# Boolean flag to indicate whether we're performing first-time zone setup. This
+# gets set in prometheus_check_first_run and is used to determine whether we
+# should run 'prometheus-configure' directly from this script, and checked in
+# prometheus_run_configure.
+#
+# 'prometheus-configure' is typically run by config-agent via the template
+# 'post_cmd' (for first-time zone setup and for config changes). However,
+# this file is on the delegate dataset, so for reprovisions config-agent
+# might not have a change to make, and thus we should run the configure script
+# manually in this case.
+FIRST_RUN='false'
 
 # ---- internal routines
 
@@ -58,7 +57,7 @@ function fatal {
 
 
 # Mount our delegated dataset at /data.
-function prometheus_setup_delegate_dataset() {
+function prometheus_setup_delegate_dataset {
     local data
     local mountpoint
 
@@ -66,21 +65,6 @@ function prometheus_setup_delegate_dataset() {
     mountpoint=$(zfs get -Hp mountpoint $dataset | awk '{print $3}')
     if [[ $mountpoint != "/data" ]]; then
         zfs set mountpoint=/data $dataset
-    fi
-}
-
-
-# Setup key and client certificate used to auth with this DC's CMON.
-function prometheus_setup_key() {
-
-    if [[ -f "$CLIENT_CERT_FILE" && -f "$PRIV_KEY_FILE" && -f "$PUB_KEY_FILE" ]]; then
-        echo "Key files already exist: $CLIENT_CERT_FILE, $PRIV_KEY_FILE, $PUB_KEY_FILE"
-    else
-        echo "Generating key and client cert for CMON auth"
-        mkdir -p $KEY_DIR
-        ${NODE} "--abort_on_uncaught_exception" \
-            /opt/triton/prometheus/bin/certgen
-        return $?
     fi
 }
 
@@ -114,32 +98,44 @@ function prometheus_setup_prometheus {
     # enable it.
     /usr/sbin/svccfg import /opt/triton/prometheus/smf/manifests/prometheus.xml
 
-    # 'prometheus-configure' is typically run by config-agent via the template
-    # 'post_cmd' (for first-time zone setup and for config changes). However,
-    # this file is on the delegate dataset, so for reprovisions config-agent
-    # might not have a change to make.
-    if [[ -f $SAPI_INST_DATA_JSON ]]; then
-        TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
-    fi
-
     return 0
 }
 
+function prometheus_check_first_run {
+    if [[ -f $SAPI_INST_DATA_JSON ]]; then
+        FIRST_RUN='false'
+    else
+        FIRST_RUN='true'
+    fi
+}
+
+function prometheus_run_configure {
+    if [[ FIRST_RUN == 'false' ]]; then
+        TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
+    fi
+}
 
 # ---- mainline
 
 prometheus_setup_delegate_dataset
-prometheus_setup_key
 prometheus_setup_env
 
 # Before 'sdc_common_setup' so the prometheus SMF service is imported before
 # config-agent is first setup.
 prometheus_setup_prometheus
 
+# This must be run before sdc_common_setup - it checks the absence of the sapi
+# config file to determine whether we are performing first-time zone setup, and
+# sdc_common_setup will create this file if it doesn't exist.
+prometheus_check_first_run
 
 CONFIG_AGENT_LOCAL_MANIFESTS_DIRS=/opt/triton/prometheus
 source /opt/smartdc/boot/lib/util.sh
 sdc_common_setup
+
+# This must be run after sdc_common_setup, since the 'prometheus-configure'
+# script depends on the sapi config file and sdc private key existing.
+prometheus_run_configure
 
 # Log rotation.
 sdc_log_rotation_add config-agent /var/svc/log/*config-agent*.log 1g

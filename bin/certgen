@@ -32,6 +32,7 @@ const CERT_LIFETIME = YEAR_MULTIPLIER;
 
 const USER = 'admin';
 const ROOT_PUB_KEY_PATH = '/root/.ssh/sdc.id_rsa.pub';
+// Keep in sync with "boot/setup.sh"
 const ROOT_PRIV_KEY_PATH = '/root/.ssh/sdc.id_rsa';
 
 // Key file paths. Keep in sync with "bin/prometheus-configure".

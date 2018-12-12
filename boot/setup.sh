@@ -34,19 +34,10 @@ PERSIST_DIR=/data/prometheus
 DATA_DIR=$PERSIST_DIR/data
 ETC_DIR=$PERSIST_DIR/etc
 
-SAPI_INST_DATA_JSON=$ETC_DIR/sapi-inst-data.json
+# Keep in sync with "bin/certgen"
+ROOT_PRIV_KEY_PATH='/root/.ssh/sdc.id_rsa'
 
-# Boolean flag to indicate whether we're performing first-time zone setup. This
-# gets set in prometheus_check_first_run and is used to determine whether we
-# should run 'prometheus-configure' directly from this script, and checked in
-# prometheus_run_configure.
-#
-# 'prometheus-configure' is typically run by config-agent via the template
-# 'post_cmd' (for first-time zone setup and for config changes). However,
-# this file is on the delegate dataset, so for reprovisions config-agent
-# might not have a change to make, and thus we should run the configure script
-# manually in this case.
-FIRST_RUN='false'
+SAPI_INST_DATA_JSON=$ETC_DIR/sapi-inst-data.json
 
 # ---- internal routines
 
@@ -98,21 +89,16 @@ function prometheus_setup_prometheus {
     # enable it.
     /usr/sbin/svccfg import /opt/triton/prometheus/smf/manifests/prometheus.xml
 
-    return 0
-}
-
-function prometheus_check_first_run {
-    if [[ -f $SAPI_INST_DATA_JSON ]]; then
-        FIRST_RUN='false'
-    else
-        FIRST_RUN='true'
-    fi
-}
-
-function prometheus_run_configure {
-    if [[ FIRST_RUN == 'false' ]]; then
+    # 'prometheus-configure' is typically run by config-agent via the template
+    # 'post_cmd' (for first-time zone setup and for config changes). However,
+    # this file is on the delegate dataset, so for reprovisions config-agent
+    # might not have a change to make, and thus we should run the configure script
+    # manually in this case.
+    if [[ -f $SAPI_INST_DATA_JSON && -f $ROOT_PRIV_KEY_PATH ]]; then
         TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
     fi
+
+    return 0
 }
 
 # ---- mainline
@@ -124,18 +110,9 @@ prometheus_setup_env
 # config-agent is first setup.
 prometheus_setup_prometheus
 
-# This must be run before sdc_common_setup - it checks the absence of the sapi
-# config file to determine whether we are performing first-time zone setup, and
-# sdc_common_setup will create this file if it doesn't exist.
-prometheus_check_first_run
-
 CONFIG_AGENT_LOCAL_MANIFESTS_DIRS=/opt/triton/prometheus
 source /opt/smartdc/boot/lib/util.sh
 sdc_common_setup
-
-# This must be run after sdc_common_setup, since the 'prometheus-configure'
-# script depends on the sapi config file and sdc private key existing.
-prometheus_run_configure
 
 # Log rotation.
 sdc_log_rotation_add config-agent /var/svc/log/*config-agent*.log 1g

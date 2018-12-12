@@ -23,6 +23,8 @@ set -o xtrace
 
 PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
 
+NODE=/opt/triton/prometheus/build/node/bin/node
+
 # Prometheus data is stored on its delegate dataset:
 #
 #   /data/prometheus/
@@ -37,7 +39,8 @@ KEY_DIR=$PERSIST_DIR/keys
 
 SAPI_INST_DATA_JSON=$ETC_DIR/sapi-inst-data.json
 
-# Key file paths. Keep in sync with "bin/prometheus-configure".
+# Key file paths. Keep in sync with "bin/prometheus-configure" and
+# "bin/certgen".
 # - PEM format private key
 PRIV_KEY_FILE=$KEY_DIR/prometheus.id_rsa
 # - SSH public key (to be added to admin)
@@ -69,29 +72,16 @@ function prometheus_setup_delegate_dataset() {
 
 # Setup key and client certificate used to auth with this DC's CMON.
 function prometheus_setup_key() {
-    local key_name
 
     if [[ -f "$CLIENT_CERT_FILE" && -f "$PRIV_KEY_FILE" && -f "$PUB_KEY_FILE" ]]; then
         echo "Key files already exist: $CLIENT_CERT_FILE, $PRIV_KEY_FILE, $PUB_KEY_FILE"
     else
         echo "Generating key and client cert for CMON auth"
         mkdir -p $KEY_DIR
-        key_name=prometheus-$(zonename | cut -d- -f1)-$(date -u '+%Y%m%dT%H%M%S')
-        # Creating auth keys and cert per CMON docs:
-        # https://github.com/joyent/triton-cmon/blob/master/docs/INSTALLING.md#create-a-certificate-from-your-private-key
-        ssh-keygen -t rsa -b 2048 -f $PRIV_KEY_FILE -N "" -C "$key_name"
-        openssl req -new -key $PRIV_KEY_FILE -out /tmp/prometheus.csr.pem \
-            -subj "/CN=admin"
-        openssl x509 -req -days 365 -in /tmp/prometheus.csr.pem \
-            -signkey $PRIV_KEY_FILE -out $CLIENT_CERT_FILE
-
-        # We write our public key to metadata so external tooling (typically
-        # `sdcadm post-setup prometheus`) can add this key to the 'admin'
-        # account for auth to CMON.
-        mdata-put instPubKey < $PUB_KEY_FILE
+        ${NODE} "--abort_on_uncaught_exception" \
+            /opt/triton/prometheus/bin/certgen
+        return $?
     fi
-
-    return 0
 }
 
 

@@ -1,0 +1,120 @@
+#!/usr/bin/env node
+
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+/*
+ * Copyright (c) 2018, Joyent, Inc.
+ *
+ * Generates certificate for Prometheus to use to authenticate to CMON.
+ *
+ * Usage:
+ *    node certgen
+ */
+
+'use strict';
+
+const fs = require('fs');
+
+const bunyan = require('bunyan');
+const sshpk = require('sshpk');
+const vasync = require('vasync');
+
+/*
+ * sshpk expects cert time in seconds - we therefore calculate the number of
+ * seconds in a year.
+ */
+const YEAR_MULTIPLIER = 60 * 60 * 24 * 365;
+const CERT_LIFETIME = YEAR_MULTIPLIER;
+
+const USER = 'admin';
+const ROOT_PUB_KEY_PATH = '/root/.ssh/sdc.id_rsa.pub';
+const ROOT_PRIV_KEY_PATH = '/root/.ssh/sdc.id_rsa';
+
+const PERSIST_DIR = '/data/prometheus';
+const KEY_DIR = PERSIST_DIR + '/keys';
+const KEY_OUTPUT_FILE = KEY_DIR + '/prom-key.pem';
+const CERT_OUTPUT_FILE = KEY_DIR + '/prom-cert.pem';
+
+const log = bunyan.createLogger({
+    name: 'certgen'
+});
+
+vasync.pipeline({
+    // ctx
+    arg: {},
+    funcs: [signCert, writeFiles]
+}, function (err) {
+    if (err) {
+        log.fatal(err);
+        process.exit(1);
+        return;
+    }
+});
+
+/*
+ * Generates a certificate signed by the specified key.
+ */
+function signCert(ctx, cb) {
+    const subj = sshpk.identityFromDN('CN=' + USER);
+
+    const privKey = sshpk.generatePrivateKey('ecdsa');
+    const pubKey = privKey.toPublic();
+
+    let rootPubKeyBuf;
+    try {
+        rootPubKeyBuf = fs.readFileSync(ROOT_PUB_KEY_PATH);
+    } catch (err) {
+        cb(err);
+        return;
+    }
+    const rootPubKey = sshpk.parseKey(rootPubKeyBuf);
+    const fp = rootPubKey.fingerprint('md5').toString('base64');
+    const issuer = sshpk.identityFromDN('CN=' + fp);
+
+    let rootPrivKeyBuf;
+    try {
+        rootPrivKeyBuf = fs.readFileSync(ROOT_PRIV_KEY_PATH);
+    } catch (err) {
+        cb(err);
+        return;
+    }
+    const rootPrivKey = sshpk.parsePrivateKey(rootPrivKeyBuf);
+
+    const opts = {
+        lifetime: CERT_LIFETIME,
+        purposes: ['signature', 'identity', 'clientAuth', 'joyentCmon']
+    };
+
+    ctx.outKey = privKey;
+    ctx.outCert = sshpk.createCertificate(subj, pubKey, issuer, rootPrivKey,
+        opts);
+    cb();
+}
+
+/*
+ * Writes the provided key and cert to disk.
+ *
+ * @requires
+ * - ctx.outKey
+ * - ctx.outCert
+ */
+function writeFiles(ctx, cb) {
+    try {
+        fs.writeFileSync(KEY_OUTPUT_FILE, ctx.outKey.toString('pem'));
+    } catch (err) {
+        cb(err);
+        return;
+    }
+    try {
+        fs.writeFileSync(CERT_OUTPUT_FILE, ctx.outCert.toString('pem'));
+    } catch (err) {
+        cb(err);
+        return;
+    }
+
+    cb();
+}

@@ -3,4 +3,5 @@
 /make_stamps
 /npm-debug.log
 /cache
+/build
 /prometheus-pkg-*.tar.bz2

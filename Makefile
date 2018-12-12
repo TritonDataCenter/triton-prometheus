@@ -9,11 +9,19 @@
 #
 
 GO_PREBUILT_VERSION = 1.10.3
+NODE_PREBUILT_VERSION = v6.15.0
+
+ifeq ($(shell uname -s),SunOS)
+    NODE_PREBUILT_TAG=zone
+    # Allow building on other than sdc-minimal-multiarch-lts@15.4.1
+    NODE_PREBUILT_IMAGE=18b094b0-eb01-11e5-80c1-175dac7ddf02
+endif
 
 include ./tools/mk/Makefile.defs
 include ./tools/mk/Makefile.smf.defs
 ifeq ($(shell uname -s),SunOS)
     include ./tools/mk/Makefile.go_prebuilt.defs
+    include ./tools/mk/Makefile.node_prebuilt.defs
 endif
 
 SERVICE_NAME = prometheus
@@ -25,11 +33,16 @@ PROMETHEUS_IMPORT = github.com/prometheus/prometheus
 PROMETHEUS_GO_DIR = $(GO_GOPATH)/src/$(PROMETHEUS_IMPORT)
 PROMETHEUS_EXEC = $(PROMETHEUS_GO_DIR)/prometheus
 
+JS_FILES := $(TOP)/bin/certgen
+ESLINT_FILES := $(JS_FILES)
+
+STAMP_CERTGEN := $(MAKE_STAMPS_DIR)/certgen
+
 #
 # Repo-specific targets
 #
 .PHONY: all
-all: $(PROMETHEUS_EXEC)
+all: $(PROMETHEUS_EXEC) $(STAMP_CERTGEN)
 
 #
 # Link the "pg_prefaulter" submodule into the correct place within our
@@ -41,6 +54,15 @@ $(PROMETHEUS_EXEC): deps/prometheus/.git $(STAMP_GO_TOOLCHAIN)
 	rm -f $(PROMETHEUS_GO_DIR)
 	ln -s $(TOP)/deps/prometheus $(PROMETHEUS_GO_DIR)
 	(cd $(PROMETHEUS_GO_DIR) && env -i $(GO_ENV) make build)
+
+$(STAMP_CERTGEN): | $(NODE_EXEC) $(NPM_EXEC)
+	$(MAKE_STAMP_REMOVE)
+	rm -rf $(TOP)/node_modules && cd $(TOP) && $(NPM) install --production
+	$(MAKE_STAMP_CREATE)
+
+clean::
+	# Clean certgen
+	rm -rf $(TOP)/node_modules
 
 .PHONY: release
 release: all deps docs $(SMF_MANIFESTS)
@@ -60,6 +82,11 @@ release: all deps docs $(SMF_MANIFESTS)
 		$(PROMETHEUS_GO_DIR)/consoles \
 		$(PROMETHEUS_GO_DIR)/console_libraries \
 		$(RELSTAGEDIR)/root/opt/triton/$(SERVICE_NAME)/prometheus/
+	# our node version
+	@mkdir -p $(RELSTAGEDIR)/root/opt/triton/$(SERVICE_NAME)/build
+	cp -r \
+		$(TOP)/build/node \
+		$(RELSTAGEDIR)/root/opt/triton/$(SERVICE_NAME)/build/
 	# zone boot
 	mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/boot
 	cp -r $(TOP)/deps/sdc-scripts/{etc,lib,sbin,smf} \
@@ -91,8 +118,10 @@ dumpvar:
 mytarget:
 	echo my command
 
+include ./tools/mk/Makefile.deps
 ifeq ($(shell uname -s),SunOS)
     include ./tools/mk/Makefile.go_prebuilt.targ
+    include ./tools/mk/Makefile.node_prebuilt.targ
 endif
 include ./tools/mk/Makefile.smf.targ
 include ./tools/mk/Makefile.targ

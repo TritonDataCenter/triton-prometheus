@@ -32,7 +32,7 @@ set -o pipefail
 
 PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
 
-NODE=/opt/triton/prometheus/build/node/bin/node_modules
+NODE=/opt/triton/prometheus/build/node/bin/node
 
 DATACENTER_NAME=
 DNS_DOMAIN=

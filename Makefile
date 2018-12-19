@@ -9,7 +9,7 @@
 #
 
 GO_PREBUILT_VERSION = 1.10.3
-NODE_PREBUILT_VERSION = v6.15.0
+NODE_PREBUILT_VERSION = v6.15.1
 
 ifeq ($(shell uname -s),SunOS)
     NODE_PREBUILT_TAG=zone

@@ -8,19 +8,19 @@
 #
 
 #
-# Updates configation files for Prometheus and enables/restarts/clears
-# the SMF prometheus service as necessary.
+# This script will generate/update configuration files for the Prometheus SMF
+# service and then ensure that it is imported/enabled/restarted/cleared as
+# necessary.
 #
-# It is expected that this is run via the config-agent "prometheus" manifest
-# `post_cmd` (see "/opt/triton/prometheus/sapi_manifests/prometheus").
-# However, running it directly is supported as well.
+# Cases where this is run:
+# - zone setup (during provision and reprovision)
+# - by config-agent (see "/opt/triton/prometheus/sapi_manifests/prometheus")
+# - regularly via cron (to regenerate a soon-to-expire CMON client cert)
 #
-
+# It can also be run manually.
 #
-# Dev Notes:
-# - Do we need retries on requests to CNS? Probably yes. Currently determining
-#   the default CMON URL and resolv.conf update for the dev config is brittle
-#   by being dependent on the CNS service being up.
+# Usage:
+#       [TRACE=1] prometheus-configure [-f]
 #
 
 if [[ -n "$TRACE" ]]; then
@@ -99,7 +99,7 @@ function prometheus_configure_get_default_cmon_domain() {
     ownerUuid=$(mdata-get sdc:owner_uuid)
     exteralNet=$(mdata-get sdc:nics | json -c 'this.nic_tag !== "admin"' 0.network_uuid)
     [[ -n "$exteralNet" ]] || fatal "could not determine non-admin NIC for this VM"
-    suffixesForVm="$(curl -i -X POST -H "Content-Type: application/json" -s $cnsUrl/suffixes-for-vm -d@/dev/stdin <<PAYLOAD | json
+    suffixesForVm="$(curl --connect-timeout 3 --max-time 10 -i -X POST -H "Content-Type: application/json" -s $cnsUrl/suffixes-for-vm -d@/dev/stdin <<PAYLOAD | json
     {
         "owner_uuid": "$ownerUuid",
         "networks": [
@@ -275,15 +275,22 @@ function prometheus_configure_ensure_nobody_owner() {
     return 0
 }
 
-# Enable/restart/clear prometheus, if necessary. Note: This uses the global
-# "UPDATES_MADE" to determine if config file changes have been made.
+# Import/enable/restart/clear prometheus, if necessary.
+#
+# Note: This uses the global "UPDATES_MADE" to determine if config file changes
+# have been made.
 function prometheus_configure_restart_prom() {
     local currState
 
+    # First, import the prometheus SMF manifest if it isn't already. It
+    # is disabled by default.
+    if ! svcs -Ho state prometheus 2>/dev/null; then
+        echo "Importing prometheus SMF service"
+        /usr/sbin/svccfg import /opt/triton/prometheus/smf/manifests/prometheus.xml
+    fi
+
     currState=$(svcs -Ho state prometheus)
     if [[ "$currState" == "disabled" ]]; then
-        # Zone setup starts with prometheus in disabled state. We enable it
-        # after the config is generated for the first time.
         echo "Enabling prometheus SMF service"
         svcadm enable prometheus
     elif [[ "$currState" == "online" ]]; then
@@ -307,6 +314,10 @@ function prometheus_configure_restart_prom() {
 
 DATACENTER_NAME=$(mdata-get sdc:datacenter_name)
 DNS_DOMAIN=$(mdata-get sdc:dns_domain)
+if [[ -z "$DNS_DOMAIN" ]]; then
+    # As of TRITON-92, we expect sdcadm to set this for all core Triton zones.
+    fatal "'sdc:dns_domain' is not set on VM metadata"
+fi
 
 prometheus_configure_setup_key
 prometheus_configure_update_config

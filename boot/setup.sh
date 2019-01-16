@@ -37,7 +37,6 @@ ETC_DIR=$PERSIST_DIR/etc
 # Keep in sync with "bin/certgen"
 ROOT_PRIV_KEY_PATH='/root/.ssh/sdc.id_rsa'
 
-SAPI_INST_DATA_JSON=$ETC_DIR/sapi-inst-data.json
 
 # ---- internal routines
 
@@ -48,7 +47,7 @@ function fatal {
 
 
 # Mount our delegated dataset at /data.
-function prometheus_setup_delegate_dataset {
+function prometheus_setup_dirs {
     local data
     local mountpoint
 
@@ -57,6 +56,9 @@ function prometheus_setup_delegate_dataset {
     if [[ $mountpoint != "/data" ]]; then
         zfs set mountpoint=/data $dataset
     fi
+
+    mkdir -p $ETC_DIR
+    mkdir -p $DATA_DIR
 }
 
 
@@ -68,51 +70,46 @@ function prometheus_setup_env {
 }
 
 
-function prometheus_setup_prometheus {
-    local config_file
-    local dc_name
-    local dns_domain
-
-    config_file=$ETC_DIR/prometheus.yml
-    dc_name=$(mdata-get sdc:datacenter_name)
-    dns_domain=$(mdata-get sdc:dns_domain)
-    if [[ -z "$dns_domain" ]]; then
-        # As of TRITON-92, we expect sdcadm to set this for all core Triton
-        # zones.
-        fatal "could not determine 'dns_domain'"
-    fi
-
-    mkdir -p $ETC_DIR
-    mkdir -p $DATA_DIR
-
-    # This is disabled by default. It is up to 'prometheus-configure' to
-    # enable it.
-    /usr/sbin/svccfg import /opt/triton/prometheus/smf/manifests/prometheus.xml
-
-    # 'prometheus-configure' is typically run by config-agent via the template
-    # 'post_cmd' (for first-time zone setup and for config changes). However,
-    # this file is on the delegate dataset, so for reprovisions config-agent
-    # might not have a change to make, and thus we should run the configure script
-    # manually in this case.
-    if [[ -f $SAPI_INST_DATA_JSON && -f $ROOT_PRIV_KEY_PATH ]]; then
-        TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
-    fi
-
-    return 0
-}
-
 # ---- mainline
 
-prometheus_setup_delegate_dataset
+prometheus_setup_dirs
 prometheus_setup_env
-
-# Before 'sdc_common_setup' so the prometheus SMF service is imported before
-# config-agent is first setup.
-prometheus_setup_prometheus
 
 CONFIG_AGENT_LOCAL_MANIFESTS_DIRS=/opt/triton/prometheus
 source /opt/smartdc/boot/lib/util.sh
 sdc_common_setup
+
+
+# Ensure 'prometheus-configure' ran and ran successfully.
+#
+# 'prometheus-configure' is responsible for writing the Prometheus config and
+# getting the "prometheus" SMF service up and running. SAPI instance config
+# changes can mean Prometheus needs to be reconfigured, so config-agent is
+# set (via sapi_manifests/prometheus/manifest.json) to run
+# 'prometheus-configure'. However, there are some cases where we need to
+# manually run it here or check on that it ran successfully:
+#
+# 1. Currently at least, a synchronous run of config-agent, as is done by
+#    'sdc_common_setup', does *not* fail if the template's 'post_cmd' fails.
+#    We want a failure there to result in this setup.sh failing.
+# 2. Because the config files in question live on the delegate dataset, it
+#    is possible that during a *re*-provision of this zone, config-agent
+#    will not run its 'post_cmd'.  We still need 'prometheus-configure' to
+#    run for a reprovision.
+if ! svcs -Ho state prometheus 2>/dev/null; then
+    # Either 'prometheus-configure' hasn't run, or it failed early.
+    TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
+else
+    currState=$(svcs -Ho state prometheus)
+    if [[ "$currState" != "online" ]]; then
+        # 'prometheus-configure' must have failed. Let's run it again to get
+        # trace output and (we hope) show the error that was hit.
+        echo "The prometheus SMF service is not online: '$currState'." \
+            "Did config-agent's run of 'prometheus-configure' fail? Re-running"
+        TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
+    fi
+fi
+
 
 # Log rotation.
 sdc_log_rotation_add config-agent /var/svc/log/*config-agent*.log 1g

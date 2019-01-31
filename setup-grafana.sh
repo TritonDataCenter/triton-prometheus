@@ -181,9 +181,15 @@ SYSTEMD
 
 zlogin \${vm_uuid} "systemctl daemon-reload && systemctl enable grafana && systemctl start grafana && systemctl status grafana" </dev/null
 
-# Lame method to allow grafana to start and provision the dashboards.
-# Would be better to poll the curl attempts below.
 sleep 5
+retries=10
+while [[ \${retries} -gt 0 ]]; do
+    if curl -sSf -u admin:admin "\${grafana_ip}:3000/api/search?type=dash-db&query=cnapi"; then
+        break;
+    fi
+    let "retries=retries-1"
+    sleep 5
+done
 
 # Set the CNAPI dashboard (for now) as the default org dashboard.
 alias json="/native/usr/node/bin/node /native/usr/bin/json"

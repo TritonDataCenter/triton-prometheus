@@ -23,7 +23,7 @@ PROMETHEUS_VERSION="2.3.2"
 ALIAS=prometheus0
 
 function usage {
-    echo "usage: ./setup-prometheus.sh [-i] [-r '<extra resolver 1>,<extra resolver 2>'] [-s <non-local server uuid>]" >&2
+    echo "usage: ./setup-prometheus.sh [-i] [-f] [-r '<extra resolver 1>,<extra resolver 2>'] [-s <non-local server uuid>]" >&2
     exit 1
 }
 
@@ -73,11 +73,14 @@ function get_admin_ip() {
 }
 
 insecure_flag="false"
+firewall_flag="false"
 resolvers=
 server_uuid=$(sysinfo | json UUID) # local headnode by default
-while getopts ":ir:s:" f; do
+while getopts ":ifr:s:" f; do
     case $f in
         i)  insecure_flag="true"
+            ;;
+        f)  firewall_flag="true"
             ;;
         r)  resolvers=$(echo $OPTARG | tr -d "\n\t\r ")
             ;;
@@ -88,7 +91,7 @@ while getopts ":ir:s:" f; do
     esac
 done
 
-if [[ $# -gt 5 ]]; then
+if [[ $# -gt 6 ]]; then
     usage
 fi
 
@@ -159,7 +162,7 @@ vm_uuid=$((sdc-vmapi /vms?sync=true -X POST -d@/dev/stdin | json -H vm_uuid) <<P
     "brand": "lx",
     "image_uuid": "${IMAGE_UUID}",
     "networks": [{"uuid": "${admin_network_uuid}"}, {"uuid": "${network_uuid}", "primary": true}],
-    "firewall_enabled": true,
+    "firewall_enabled": ${firewall_flag},
     "owner_uuid": "${admin_uuid}",
     "server_uuid": "${server_uuid}",
     $(if [[ -n ${resolvers} ]]; then echo "\"resolvers\":[\"$(echo "${resolvers}" | sed -e 's/,/","/g')\"],"; fi)

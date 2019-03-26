@@ -30,6 +30,11 @@ function fatal() {
     exit 1
 }
 
+function usage() {
+    echo "usage: ./setup-grafana.sh [-s <non-local server uuid>] [-k <path to ssh key>]" >&2
+    exit 1
+}
+
 # Necessary to ensure compatibility for servers with LACP - see HEAD-2247
 function get_admin_ip() {
     sysinfo | /usr/node/bin/node -e "
@@ -70,14 +75,22 @@ function get_admin_ip() {
     "
 }
 
-if [[ $# -gt 1 ]]; then
-    echo "usage: ./setup-grafana.sh [<non-local server uuid>]" >&2
-    exit 1
-fi
+server_uuid=$(sysinfo | json UUID) # local headnode by default
+ssh_key_file=
+ssh_key=
+while getopts ":s:k:" f; do
+    case $f in
+        s)  server_uuid=$OPTARG
+            ;;
+        k)  ssh_key_file=$OPTARG
+            ;;
+        \?) usage
+            ;;
+    esac
+done
 
-server_uuid=$1
-if [[ -z "$server_uuid" ]]; then
-    server_uuid=$(sysinfo | json UUID) # local headnode by default
+if [[ $# -gt 4 ]]; then
+    usage
 fi
 
 set -o errexit
@@ -92,6 +105,12 @@ if [[ -z ${SSH_OPTS} ]]; then
 fi
 
 . ~/.bash_profile
+
+# Check that key exists if we passed the flag; then read the key's contents
+if [[ -n "${ssh_key_file}" ]]; then
+    [[ -f "${ssh_key_file}" ]] || fatal "ssh key not found at ${ssh_key_file}"
+    ssh_key=$(<"${ssh_key_file}")
+fi
 
 #
 # grafana0 zone creation
@@ -289,6 +308,12 @@ echo \$pw > /zones/${vm_uuid}/root/root/grafana/password.txt
 curl -sSf --cacert \${cert} -u admin:admin \
     "https://${grafana_ip}:${PORT}/api/user/password" -H content-type:application/json \
     -d '{"oldPassword":"admin","newPassword":'\"\${pw}\"',"confirmNew":'\"\${pw}\"'}' -X PUT
+
+# Add ssh key, if specified
+if [[ -n "${ssh_key_file}" ]]; then
+    echo "${ssh_key}" >> /zones/${vm_uuid}/root/root/.ssh/authorized_keys
+fi
+
 SERVER
 
 echo ""

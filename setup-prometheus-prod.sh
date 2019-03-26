@@ -23,7 +23,7 @@ PROMETHEUS_VERSION="2.3.2"
 ALIAS=prometheus0
 
 function usage {
-    echo "usage: ./setup-prometheus.sh [-i] [-f] [-r '<extra resolver 1>,<extra resolver 2>'] [-s <non-local server uuid>]" >&2
+    echo "usage: ./setup-prometheus.sh [-i] [-f] [-r '<extra resolver 1>,<extra resolver 2>'] [-s <non-local server uuid>] [-k <path to ssh key>]" >&2
     exit 1
 }
 
@@ -74,9 +74,11 @@ function get_admin_ip() {
 
 insecure_flag="false"
 firewall_flag="false"
+ssh_key_file=
+ssh_key=
 resolvers=
 server_uuid=$(sysinfo | json UUID) # local headnode by default
-while getopts ":ifr:s:" f; do
+while getopts ":ifr:s:k:" f; do
     case $f in
         i)  insecure_flag="true"
             ;;
@@ -86,12 +88,14 @@ while getopts ":ifr:s:" f; do
             ;;
         s)  server_uuid=$OPTARG
             ;;
+        k)  ssh_key_file=$OPTARG
+            ;;
         \?) usage
             ;;
     esac
 done
 
-if [[ $# -gt 6 ]]; then
+if [[ $# -gt 8 ]]; then
     usage
 fi
 
@@ -107,6 +111,12 @@ if [[ -z ${SSH_OPTS} ]]; then
 fi
 
 . ~/.bash_profile
+
+# Check that key exists if we passed the flag; then read the key's contents
+if [[ -n "${ssh_key_file}" ]]; then
+    [[ -f "${ssh_key_file}" ]] || fatal "ssh key not found at ${ssh_key_file}"
+    ssh_key=$(<"${ssh_key_file}")
+fi
 
 #
 # prometheus0 zone creation
@@ -276,6 +286,11 @@ cat > /zones/${vm_uuid}/root/etc/systemd/system/prometheus.service <<SYSTEMD
 [Install]
     WantedBy=multi-user.target
 SYSTEMD
+
+# Add ssh key, if specified
+if [[ -n "${ssh_key_file}" ]]; then
+    echo "${ssh_key}" >> /zones/${vm_uuid}/root/root/.ssh/authorized_keys
+fi
 
 zlogin ${vm_uuid} "systemctl daemon-reload && systemctl enable prometheus && systemctl start prometheus && systemctl status prometheus" < /dev/null
 SERVER

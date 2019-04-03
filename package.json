@@ -1,12 +1,22 @@
 {
-  "name": "triton-prometheus",
-  "description": "Prometheus for TritonDC",
-  "version": "1.0.0",
-  "author": "Joyent (joyent.com)",
-  "private": true,
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/joyent/triton-prometheus.git"
-  },
-  "license": "MPL-2.0"
+    "name": "triton-prometheus",
+    "description": "Prometheus for TritonDC",
+    "version": "1.0.0",
+    "author": "Joyent (joyent.com)",
+    "private": true,
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/joyent/triton-prometheus.git"
+    },
+    "license": "MPL-2.0",
+    "dependencies": {
+        "assert-plus": "^1.0.0",
+        "bunyan": "^1.8.12",
+        "sshpk": "^1.15.2",
+        "vasync": "^2.2.0"
+    },
+    "devDependencies": {
+        "eslint": "^4.13.1",
+        "eslint-plugin-joyent": "~2.1.0"
+    }
 }

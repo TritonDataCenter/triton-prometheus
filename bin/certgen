@@ -1,0 +1,158 @@
+#!/usr/bin/env node
+
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+/*
+ * Copyright (c) 2019, Joyent, Inc.
+ *
+ * Generates certificate for Prometheus to use to authenticate to CMON.
+ *
+ * Usage:
+ *    node certgen <flavor>
+ *
+ * where flavor is either 'sdc' or 'manta' - this determines whether to use the
+ * admin or poseidon key when generating the certificate.
+ */
+
+'use strict';
+
+const fs = require('fs');
+
+const assert = require('assert-plus');
+const bunyan = require('bunyan');
+const sshpk = require('sshpk');
+const vasync = require('vasync');
+
+/*
+ * sshpk expects cert time in seconds - we therefore calculate the number of
+ * seconds in a year.
+ */
+const YEAR_MULTIPLIER = 60 * 60 * 24 * 365;
+const CERT_LIFETIME = 10 * YEAR_MULTIPLIER;
+
+const ROOT_KEY_DIR = '/root/.ssh';
+const SDC_PRIVATE_KEY = ROOT_KEY_DIR + '/sdc.id_rsa';
+const MANTA_PRIVATE_KEY = ROOT_KEY_DIR + '/id_rsa';
+const PUB_KEY_SUFFIX = '.pub';
+
+const ROOT_DIR = '/opt/triton/prometheus';
+
+/*
+ * CMON key-related paths. Keep in sync with "boot/setup.sh" and
+ * "bin/prometheus-configure".
+ */
+const CMON_KEY_OUT_DIR = ROOT_DIR + '/keys';
+const CMON_KEY_OUTPUT_FILE = CMON_KEY_OUT_DIR + '/prometheus.key.pem';
+const CMON_CERT_OUTPUT_FILE = CMON_KEY_OUT_DIR + '/prometheus.cert.pem';
+
+const log = bunyan.createLogger({
+    name: 'certgen'
+});
+
+/*
+ * Generates a certificate signed by the key specified by the script's 'flavor'
+ * argument and attaches the new key and cert to the ctx argument.
+ *
+ * requires:
+ * - ctx.flavor
+ */
+function signCert(ctx, cb) {
+    assert.object(ctx, 'ctx');
+    assert.string(ctx.flavor, 'ctx.flavor');
+    const flavor = ctx.flavor;
+    assert.ok(flavor === 'sdc' || flavor === 'manta',
+        'flavor === \'sdc\' || flavor === \'manta\'');
+
+    const privKey = sshpk.generatePrivateKey('ecdsa');
+    const pubKey = privKey.toPublic();
+
+    let username;
+    let rootPrivKeyPath;
+    if (flavor === 'sdc') {
+        rootPrivKeyPath = SDC_PRIVATE_KEY;
+        username = 'admin';
+    } else { // flavor === 'manta'
+        rootPrivKeyPath = MANTA_PRIVATE_KEY;
+        username = 'poseidon';
+    }
+    const rootPubKeyPath = rootPrivKeyPath + PUB_KEY_SUFFIX;
+
+    let rootPubKeyBuf;
+    let rootPrivKeyBuf;
+    try {
+        rootPubKeyBuf = fs.readFileSync(rootPubKeyPath);
+    } catch (err) {
+        cb(err);
+        return;
+    }
+    try {
+        rootPrivKeyBuf = fs.readFileSync(rootPrivKeyPath);
+    } catch (err) {
+        cb(err);
+        return;
+    }
+
+    const subj = sshpk.identityFromDN('CN=' + username);
+    const rootPubKey = sshpk.parseKey(rootPubKeyBuf);
+    const fp = rootPubKey.fingerprint('md5').toString('base64');
+    const issuer = sshpk.identityFromDN('CN=' + fp);
+    const rootPrivKey = sshpk.parsePrivateKey(rootPrivKeyBuf);
+
+    const opts = {
+        lifetime: CERT_LIFETIME,
+        purposes: ['signature', 'identity', 'clientAuth', 'joyentCmon']
+    };
+
+    ctx.outKey = privKey;
+    ctx.outCert = sshpk.createCertificate(subj, pubKey, issuer, rootPrivKey,
+        opts);
+    cb();
+}
+
+/*
+ * Writes the provided key and cert to disk.
+ *
+ * requires:
+ * - ctx.outKey
+ * - ctx.outCert
+ */
+function writeFiles(ctx, cb) {
+    assert.object(ctx);
+    assert.object(ctx.outKey);
+    assert.object(ctx.outCert);
+
+    try {
+        fs.writeFileSync(CMON_KEY_OUTPUT_FILE, ctx.outKey.toString('pem'));
+    } catch (err) {
+        cb(err);
+        return;
+    }
+    try {
+        fs.writeFileSync(CMON_CERT_OUTPUT_FILE, ctx.outCert.toString('pem'));
+    } catch (err) {
+        cb(err);
+        return;
+    }
+
+    cb();
+}
+
+// --- mainline
+
+vasync.pipeline({
+    // ctx
+    arg: {
+        flavor: process.argv[2]
+    },
+    funcs: [signCert, writeFiles]
+}, function (err) {
+    if (err) {
+        log.fatal(err);
+        process.exit(1);
+        return;
+    }
+});

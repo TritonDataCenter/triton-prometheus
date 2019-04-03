@@ -1,0 +1,362 @@
+#!/bin/bash
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+# Copyright (c) 2019, Joyent, Inc.
+#
+
+#
+# Updates configation files for Prometheus and enables/restarts/clears
+# the SMF prometheus service as necessary.
+#
+# This is run from three contexts:
+# - From the config-agent "prometheus" manifest `post_cmd`
+#   (see "/opt/triton/prometheus/sapi_manifests/prometheus").
+# - On first boot, to write the initial prometheus config (see comment for
+#   prometheus_configure_check_service_exists below)
+# - On every boot, to update CNS resolvers if necessary.
+#
+# Running it directly is supported as well.
+#
+
+#
+# Dev Notes:
+# - Do we need retries on requests to CNS? Probably yes. Currently determining
+#   the default CMON URL and resolv.conf update for the dev config is brittle
+#   by being dependent on the CNS service being up.
+#
+
+if [[ -n "$TRACE" ]]; then
+    export PS4='[\D{%FT%TZ}] ${BASH_SOURCE}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+    set -o xtrace
+fi
+set -o errexit
+set -o pipefail
+
+PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
+
+DATACENTER_NAME=
+DNS_DOMAIN=
+ROOT_DIR=/opt/triton/prometheus
+CONF_DIR=$ROOT_DIR/etc
+CONFIG_JSON=$CONF_DIR/config.json
+PROMETHEUS_YML=$CONF_DIR/prometheus.yml
+
+# CMON key-related paths. Keep in sync with "bin/certgen" and "boot/setup.sh".
+CMON_AUTH_DIR=$ROOT_DIR/keys
+CMON_KEY_FILE=$CMON_AUTH_DIR/prometheus.key.pem
+CMON_CERT_FILE=$CMON_AUTH_DIR/prometheus.cert.pem
+
+#
+# A space-separated list of names of things updated. This is used to determine
+# if the prometheus SMF service needs to be restarted.
+#
+UPDATES_MADE=
+
+if [[ $(json "is_manta_service" < ${CONFIG_JSON}) == "true" ]]; then
+    export FLAVOR="manta"
+    export PROM_USER="poseidon"
+else
+    export FLAVOR="sdc"
+    export PROM_USER="admin"
+fi
+
+# ---- support routines
+
+function fatal {
+    printf '%s: ERROR: %s\n' "$(basename $0)" "$*" >&2
+    exit 1
+}
+
+#
+# Upon first provision, prometheus-configure will run as config agent's
+# post_cmd, but the prometheus service won't have been imported yet. Thus, we
+# will exit early when we perform this check. In this situation, boot/setup.sh
+# will run prometheus-configure directly, so the full script will still get run.
+#
+function prometheus_configure_check_service_exists() {
+    if ! svcs -H prometheus; then
+        echo 'prometheus service has not been imported yet; aborting setup'
+        exit 1
+    fi
+}
+
+#
+# Attempt to guess an appropriate CMON URL. This setup is appropriate for
+# a development setup.
+#
+function prometheus_configure_get_default_cmon_domain() {
+    local cnsUrl
+    local ownerUuid
+    local externalNet
+    local suffixesForVm
+    local cnsStatusCode
+    local suffix
+    local cmonDomain
+
+    #
+    # Ask CNS for the DNS suffixes in use for the external (non-admin)
+    # network.
+    #
+    #    e.g.:
+    #    {
+    #      "suffixes": [
+    #        "svc.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us",
+    #        "inst.930896af-bf8c-48d4-885c-6573a94b1853.coal.cns.joyent.us"
+    #      ]
+    #    }
+    #
+    cnsUrl=http://cns.$DATACENTER_NAME.$DNS_DOMAIN
+    ownerUuid=$(mdata-get sdc:owner_uuid)
+    externalNet=$(mdata-get sdc:nics | json -c 'this.nic_tag !== "admin" && this.nic_tag !== "manta"' 0.network_uuid)
+    [[ -n "$externalNet" ]] || fatal "could not determine non-admin NIC for this VM"
+    suffixesForVm="$(curl -i -X POST -H "Content-Type: application/json" -s $cnsUrl/suffixes-for-vm -d@/dev/stdin <<PAYLOAD | json
+    {
+        "owner_uuid": "$ownerUuid",
+        "networks": [
+            "$externalNet"
+        ]
+    }
+PAYLOAD
+)"
+    cnsStatusCode=$(echo "$suffixesForVm" | head -1 | awk '{print $2}')
+    [[ $cnsStatusCode == "200" ]] \
+        || fatal "error retrieving suffixes-for-vm from CNS: status $cnsStatusCode"
+
+    #
+    # Then use suffix -- everything after the account UUID -- on the first
+    # "suffixes" entry.
+    #
+    suffix=$(echo "$suffixesForVm" | json -H suffixes.0 | cut -d. -f3-)
+
+    cmonDomain="cmon.$suffix"
+    echo "$cmonDomain"
+}
+
+#
+# Update /etc/resolv.conf as necessary.
+#
+# Side-effect: Updates "UPDATES_MADE" global.
+#
+function prometheus_configure_update_resolv_conf() {
+    local requireCnsResolver=$1
+    local resolvers
+    local binderIp
+    local cnsIp
+
+    resolvers=$(mdata-get sdc:resolvers | json -a)
+
+    echo "search $DNS_DOMAIN" > /etc/resolv.conf.new
+
+    if [[ "$requireCnsResolver" == 'true' ]]; then
+        #
+        # Ensure that the CNS IP (any will do; we'll use its admin IP because
+        # that is easy for us to look up in binder) is first in this zone's
+        # resolv.conf.
+        # Limitation: This just uses the first CNS in DNS if there are many.
+        #
+        # We have to specify the binder IP because (a) `dig` only looks at the
+        # first nameserver in /etc/resolv.conf and (b) we might have the CNS
+        # IP as the first resolver.
+        #
+        binderIp=$(echo "$resolvers" | head -1)
+        cnsIp=$(dig @$binderIp +short cns.$DATACENTER_NAME.$DNS_DOMAIN | head -1)
+        [[ -n "$cnsIp" ]] || fatal "could not determine IP for CNS"
+
+        #
+        # We need this to be the first nameserver line because e.g., 8.8.8.8
+        # will error out on these internal DNS names.
+        #
+        echo "nameserver $cnsIp" >> /etc/resolv.conf.new
+    fi
+
+    echo "$resolvers" | while read ip; do
+        echo "nameserver $ip" >> /etc/resolv.conf.new
+    done
+
+    if ! diff /etc/resolv.conf /etc/resolv.conf.new >/dev/null; then
+        echo "Updating /etc/resolve.conf (requireCnsResolver=$requireCnsResolver)"
+        cp /etc/resolv.conf /etc/resolv.conf.bak
+        mv /etc/resolv.conf.new /etc/resolv.conf
+        UPDATES_MADE="$UPDATES_MADE resolv.conf"
+    fi
+
+    return 0
+}
+
+#
+# Update the prometheus config as required. Note this may involve updating
+# resolv.conf as well.
+#
+# Side-effect: Updates "UPDATES_MADE" global.
+#
+function prometheus_configure_update_config() {
+    local cmonDomain
+    local cmonInsecure
+    local cmonInsecureDefault
+    local requireCnsResolver
+    local requireCnsResolverDefault
+    local main_config
+    local manta_config
+
+    # These defaults change to "true" if cmon_domain is set.
+    cmonInsecureDefault=false
+    requireCnsResolverDefault=false
+
+    #
+    # The appropriate CMON URL is either from the service config, or fallback
+    # to guessing from CNS suffix for admin VMs.
+    #
+    cmonDomain=$(json -f $CONFIG_JSON cmon_domain)
+    if [[ -z "$cmonDomain" ]]; then
+        cmonInsecureDefault=true
+        requireCnsResolverDefault=true
+
+        cmonDomain=$(prometheus_configure_get_default_cmon_domain)
+        if [[ -z "$cmonDomain" ]]; then
+            fatal "'cmon_domain' service config is not set and could not determine a default CMON URL"
+        fi
+    fi
+
+    cmonInsecure=$(json -f $CONFIG_JSON cmon_insecure_skip_verify)
+    if [[ -z "$cmonInsecure" ]]; then
+        cmonInsecure=$cmonInsecureDefault
+    fi
+
+    #
+    # The "default" CMON URL here is the code path for development
+    # convenience. We only assume that CNS is minimally setup per
+    # https://github.com/joyent/triton-cns/blob/master/docs/operator-guide.md#small-developmenttesting-setup
+    # To resolve CNS names for CMON we then need the CNS IP in this zone's
+    # resolv.conf (public DNS, e.g. 8.8.8.8, won't know anything about
+    # these domain names).
+    #
+    requireCnsResolver=$(json -f $CONFIG_JSON require_cns_resolver)
+    if [[ -z "$requireCnsResolver" ]]; then
+        requireCnsResolver=$requireCnsResolverDefault
+    fi
+    # Update /etc/resolv.conf as appropriate.
+    prometheus_configure_update_resolv_conf $requireCnsResolver
+
+    read -rd '' main_config <<CONFIG || true
+global:
+  scrape_interval:     15s # Default is 1 minute.
+  evaluation_interval: 15s # Default is 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+scrape_configs:
+  # The job name is added as a label 'job=<job_name>' to any timeseries scraped
+  # from this config.
+  - job_name: '${PROM_USER}_${DATACENTER_NAME}'
+    scheme: https
+    tls_config:
+      cert_file: $CMON_CERT_FILE
+      key_file: $CMON_KEY_FILE
+      insecure_skip_verify: $cmonInsecure
+    relabel_configs:
+      - source_labels: [__meta_triton_machine_alias]
+        target_label: alias
+      - source_labels: [__meta_triton_machine_id]
+        target_label: instance
+    triton_sd_configs:
+      - account: '${PROM_USER}'
+        dns_suffix: '$cmonDomain'
+        endpoint: '$cmonDomain'
+        version: 1
+        tls_config:
+          cert_file: $CMON_CERT_FILE
+          key_file: $CMON_KEY_FILE
+          insecure_skip_verify: $cmonInsecure
+  - job_name: 'prometheus_${DATACENTER_NAME}'
+    static_configs:
+    - targets:
+      - localhost:9090
+CONFIG
+
+    # Write the config to a temporary file.
+    echo -e "${main_config}\n${manta_config}\n" > ${PROMETHEUS_YML}.new
+
+    # Update the config, if changed.
+    if [[ ! -f ${PROMETHEUS_YML} ]]; then
+        # First time config.
+        echo "Writing first time prometheus config ($PROMETHEUS_YML)"
+        mv ${PROMETHEUS_YML}.new ${PROMETHEUS_YML}
+        UPDATES_MADE="$UPDATES_MADE prometheus.yml"
+    elif ! diff ${PROMETHEUS_YML} ${PROMETHEUS_YML}.new >/dev/null; then
+        # The config differs.
+        echo "Updating prometheus config ($PROMETHEUS_YML)"
+        cp ${PROMETHEUS_YML} ${PROMETHEUS_YML}.bak
+        mv ${PROMETHEUS_YML}.new ${PROMETHEUS_YML}
+        UPDATES_MADE="$UPDATES_MADE prometheus.yml"
+    fi
+
+    return 0
+}
+
+#
+# The prometheus SMF service runs as the 'nobody' user, so the files it
+# accesses must be owned by nobody. Here, we ensure this for the files that may
+# change due to SAPI configuration changes.
+#
+function prometheus_configure_ensure_nobody_owner() {
+    local output
+
+    # We explicitly use the chown that has the "-c" option
+    output=$(/opt/local/bin/chown -c nobody:nobody \
+        $CONF_DIR/*)
+    if [[ -n "$output" ]]; then
+        UPDATES_MADE="$UPDATES_MADE chown"
+        echo "$output"
+    fi
+
+    return 0
+}
+
+#
+# Enable/restart/clear prometheus, if necessary. Note: This uses the global
+# "UPDATES_MADE" to determine if config file changes have been made.
+#
+function prometheus_configure_restart_prom() {
+    local currState
+
+    currState=$(svcs -Ho state prometheus)
+    if [[ "$currState" == "disabled" ]]; then
+        #
+        # Zone setup starts with prometheus in disabled state. We enable it
+        # after the config is generated for the first time.
+        #
+        echo "Enabling prometheus SMF service"
+        svcadm enable prometheus
+    elif [[ "$currState" == "online" ]]; then
+        if [[ -n "$UPDATES_MADE" ]]; then
+            echo "Restarting prometheus SMF service"
+            svcadm restart prometheus
+        fi
+    elif [[ "$currState" == "maintenance" ]]; then
+        echo "Clearing prometheus SMF service"
+        svcadm clear prometheus
+    else
+        fatal "unexpected prometheus service state: '$currState'"
+    fi
+
+    return 0
+}
+
+# ---- mainline
+
+if [[ "$FLAVOR" == "manta" ]]; then
+    DATACENTER_NAME=$(json -f ${CONFIG_JSON} datacenter)
+    DNS_DOMAIN=$(json -f ${CONFIG_JSON} dns_domain)
+else
+    DATACENTER_NAME=$(mdata-get sdc:datacenter_name)
+    DNS_DOMAIN=$(mdata-get sdc:dns_domain)
+fi
+
+prometheus_configure_check_service_exists
+prometheus_configure_update_config
+prometheus_configure_ensure_nobody_owner
+prometheus_configure_restart_prom
+
+exit 0

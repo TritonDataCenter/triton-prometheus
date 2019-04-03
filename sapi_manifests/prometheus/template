@@ -1,0 +1,21 @@
+{
+{{#cmon_domain}}
+    "cmon_domain": "{{{cmon_domain}}}",
+{{/cmon_domain}}
+{{#cmon_insecure_skip_verify}}
+    "cmon_insecure_skip_verify": {{{cmon_insecure_skip_verify}}},
+{{/cmon_insecure_skip_verify}}
+{{#require_cns_resolver}}
+    "require_cns_resolver": {{{require_cns_resolver}}},
+{{/require_cns_resolver}}
+
+
+{{#is_manta_service}}
+    "is_manta_service": "{{{is_manta_service}}}",
+    "datacenter": "{{{DATACENTER}}}",
+    "dns_domain": "{{{DNS_DOMAIN}}}",
+{{/is_manta_service}}
+
+    {{! "_eof" is an unused key for convenience handling the trailing comma }}
+    "_eof": null
+}

@@ -1,5 +1,8 @@
-/tmp
-/node_modules
-/make_stamps
-/npm-debug.log
+/bits
 /build
+/cache
+/make_stamps
+/node_modules
+/npm-debug.log
+/prometheus-pkg-*.tar.gz
+/tmp

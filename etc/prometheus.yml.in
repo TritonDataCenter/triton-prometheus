@@ -1,0 +1,32 @@
+global:
+  scrape_interval:     %%SCRAPE_INTERVAL%%s # Default is 1 minute.
+  evaluation_interval: %%EVALUATION_INTERVAL%%s # Default is 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+scrape_configs:
+  # The job name is added as a label 'job=<job_name>' to any timeseries scraped
+  # from this config.
+  - job_name: '%%PROM_USER%%_%%DATACENTER_NAME%%'
+    scheme: https
+    tls_config:
+      cert_file: %%CMON_CERT_FILE%%
+      key_file: %%CMON_KEY_FILE%%
+      insecure_skip_verify: %%CMON_INSECURE%%
+    relabel_configs:
+      - source_labels: [__meta_triton_machine_alias]
+        target_label: alias
+      - source_labels: [__meta_triton_machine_id]
+        target_label: instance
+    triton_sd_configs:
+      - account: '%%PROM_USER%%'
+        dns_suffix: '%%CMON_DOMAIN%%'
+        endpoint: '%%CMON_DOMAIN%%'
+        version: 1
+        tls_config:
+          cert_file: %%CMON_CERT_FILE%%
+          key_file: %%CMON_KEY_FILE%%
+          insecure_skip_verify: %%CMON_INSECURE%%
+  - job_name: 'prometheus_%%DATACENTER_NAME%%'
+    static_configs:
+    - targets:
+      - localhost:9090

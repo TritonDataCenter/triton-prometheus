@@ -1,0 +1,43 @@
+global:
+  #
+  # These three numeric values can be set as SAPI config variables. If these
+  # variables are not set, the defaults used by the instance's setup scripts
+  # are:
+  # - scrape_interval: 60s
+  # - scrape_timeout: 10s
+  # - evaluation_interval: 60s
+  #
+  # These variables may be set manually or by `sdcadm` or `manta-adm`, which may
+  # specify their own application- and size-specific defaults.
+  #
+  scrape_interval: %%SCRAPE_INTERVAL%%s
+  scrape_timeout: %%SCRAPE_TIMEOUT%%s
+  evaluation_interval: %%EVALUATION_INTERVAL%%s
+
+scrape_configs:
+  # The job name is added as a label 'job=<job_name>' to any timeseries scraped
+  # from this config.
+  - job_name: '%%PROM_USER%%_%%DATACENTER_NAME%%'
+    scheme: https
+    tls_config:
+      cert_file: %%CMON_CERT_FILE%%
+      key_file: %%CMON_KEY_FILE%%
+      insecure_skip_verify: %%CMON_INSECURE%%
+    relabel_configs:
+      - source_labels: [__meta_triton_machine_alias]
+        target_label: alias
+      - source_labels: [__meta_triton_machine_id]
+        target_label: instance
+    triton_sd_configs:
+      - account: '%%PROM_USER%%'
+        dns_suffix: '%%CMON_DOMAIN%%'
+        endpoint: '%%CMON_DOMAIN%%'
+        version: 1
+        tls_config:
+          cert_file: %%CMON_CERT_FILE%%
+          key_file: %%CMON_KEY_FILE%%
+          insecure_skip_verify: %%CMON_INSECURE%%
+  - job_name: 'prometheus_%%DATACENTER_NAME%%'
+    static_configs:
+    - targets:
+      - localhost:9090

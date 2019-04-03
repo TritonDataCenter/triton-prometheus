@@ -1,0 +1,70 @@
+options {
+        directory "%%NAMED_DIR%%";
+
+        dnssec-enable yes;
+        dnssec-validation yes;
+
+        auth-nxdomain no;
+
+        allow-transfer {
+                127.0.0.1;
+        };
+
+        listen-on { 127.0.0.1; };
+
+        check-integrity yes;
+
+        recursion yes;
+};
+
+masters cns {
+        %%CNS_IP%%;
+};
+
+logging {
+        channel default_log {
+                file "%%NAMED_LOG_DIR%%/bind.log" versions 3 size 5m;
+                severity info;
+                print-time yes;
+                print-severity yes;
+                print-category yes;
+        };
+        category default {
+                default_log;
+        };
+};
+
+zone "." IN {
+        type forward;
+        forward only;
+        forwarders {
+                8.8.8.8;
+                8.8.4.4;
+        };
+};
+
+zone "%%DNS_DOMAIN%%" IN {
+        type forward;
+        forward only;
+        forwarders {
+                %%BINDER_IP%%;
+        };
+};
+
+zone "%%DATACENTER_NAME%%.cns.%%DNS_DOMAIN%%" IN {
+        type slave;
+        request-ixfr yes;
+        file "slave/%%DATACENTER_NAME%%.cns.%%DNS_DOMAIN%%";
+
+        masters { cns; };
+};
+
+zone "localhost" IN {
+        type master;
+        file "master/localhost";
+};
+
+zone "127.in-addr.arpa" IN {
+        type master;
+        file "master/127.in-addr.arpa";
+};

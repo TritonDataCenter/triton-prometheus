@@ -195,15 +195,9 @@ function prometheus_configure_update_resolv_conf() {
 function prometheus_configure_update_config() {
     local cmonDomain
     local cmonInsecure
-    local cmonInsecureDefault
     local requireCnsResolver
-    local requireCnsResolverDefault
     local main_config
     local manta_config
-
-    # These defaults change to "true" if cmon_domain is set.
-    cmonInsecureDefault=false
-    requireCnsResolverDefault=false
 
     #
     # The appropriate CMON URL is either from the service config, or fallback
@@ -211,9 +205,6 @@ function prometheus_configure_update_config() {
     #
     cmonDomain=$(json -f $CONFIG_JSON cmon_domain)
     if [[ -z "$cmonDomain" ]]; then
-        cmonInsecureDefault=true
-        requireCnsResolverDefault=true
-
         cmonDomain=$(prometheus_configure_get_default_cmon_domain)
         if [[ -z "$cmonDomain" ]]; then
             fatal "'cmon_domain' service config is not set and could not determine a default CMON URL"
@@ -222,7 +213,7 @@ function prometheus_configure_update_config() {
 
     cmonInsecure=$(json -f $CONFIG_JSON cmon_insecure_skip_verify)
     if [[ -z "$cmonInsecure" ]]; then
-        cmonInsecure=$cmonInsecureDefault
+        cmonInsecure=false
     fi
 
     #
@@ -235,7 +226,7 @@ function prometheus_configure_update_config() {
     #
     requireCnsResolver=$(json -f $CONFIG_JSON require_cns_resolver)
     if [[ -z "$requireCnsResolver" ]]; then
-        requireCnsResolver=$requireCnsResolverDefault
+        requireCnsResolver=false
     fi
     # Update /etc/resolv.conf as appropriate.
     prometheus_configure_update_resolv_conf $requireCnsResolver

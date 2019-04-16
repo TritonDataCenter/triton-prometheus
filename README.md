@@ -67,8 +67,8 @@ set in SAPI.
 | Key                              | Type   | Description |
 | -------------------------------- | ------ | ----------- |
 | **cmon\_domain**                 | String | Optional. The domain at which Prometheus should talk to this DC's CMON, e.g. "cmon.us-east-1.triton.zone". The actual endpoint is assumed to be https and port 9163. See notes below. |
-| **cmon\_insecure\_skip\_verify** | Bool   | Optional. This can be set to `true` to have Prometheus ignore TLS cert errors from a self-signed cert. This is false by default if `cmon_domain` is provided and true by default otherwise. |
-| **require\_cns\_resolver** | Bool   | Optional. This can be set to `true` to automatically determine a CNS resolver and add it to the Prometheus zone's `/etc/resolv.conf`. This is false by default if `cmon_domain` is provided and true by default otherwise. |
+| **cmon\_insecure\_skip\_verify** | Bool   | Optional. This can be set to `true` to have Prometheus ignore TLS cert errors from a self-signed cert. This is false by default. |
+| **require\_cns\_resolver** | Bool   | Optional. This can be set to `true` to automatically determine a CNS resolver and add it to the Prometheus zone's `/etc/resolv.conf`. This is false by default. |
 
 Prometheus gets its metrics from the DC's local CMON, typically over the
 external network. To auth with CMON properly in a production environment, it

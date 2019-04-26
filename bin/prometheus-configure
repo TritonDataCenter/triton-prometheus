@@ -337,13 +337,8 @@ function prometheus_configure_restart_prom() {
 
 # ---- mainline
 
-if [[ "$FLAVOR" == "manta" ]]; then
-    DATACENTER_NAME=$(json -f ${CONFIG_JSON} datacenter)
-    DNS_DOMAIN=$(json -f ${CONFIG_JSON} dns_domain)
-else
-    DATACENTER_NAME=$(mdata-get sdc:datacenter_name)
-    DNS_DOMAIN=$(mdata-get sdc:dns_domain)
-fi
+DATACENTER_NAME=$(json -f ${CONFIG_JSON} datacenter)
+DNS_DOMAIN=$(json -f ${CONFIG_JSON} dns_domain)
 
 prometheus_configure_check_service_exists
 prometheus_configure_update_config

@@ -15,6 +15,11 @@
     "datacenter": "{{{DATACENTER}}}",
     "dns_domain": "{{{DNS_DOMAIN}}}",
 {{/is_manta_service}}
+{{^is_manta_service}}
+    "is_manta_service": "false",
+    "datacenter": "{{{datacenter_name}}}",
+    "dns_domain": "{{{dns_domain}}}",
+{{/is_manta_service}}
 
     {{! "_eof" is an unused key for convenience handling the trailing comma }}
     "_eof": null

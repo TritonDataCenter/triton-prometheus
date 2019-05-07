@@ -13,7 +13,6 @@
 # discovered by the config.
 #
 
-set -o xtrace
 set -o errexit
 set -o pipefail
 

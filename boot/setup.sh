@@ -227,6 +227,9 @@ else # "$FLAVOR" == "triton"
     sdc_log_rotation_add prometheus /var/svc/log/*prometheus*.log 1g
     sdc_log_rotation_setup_end
 
+    # Update the global_zones.json the first time
+    /opt/triton/prometheus/bin/update_global_zones.sh >>/var/log/update_global_zones.log 2>&1
+
     sdc_setup_complete
 fi
 

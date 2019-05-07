@@ -170,6 +170,26 @@ function prometheus_setup_prometheus {
     TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
 }
 
+function prometheus_initialize_global_zones_json {
+    # Start with an empty file
+    echo "[]" > /opt/triton/prometheus/etc/global_zones.json
+}
+
+function prometheus_setup_crontab {
+    # Setup crontab
+    tmp_crontab=/tmp/prometheus-$$.cron
+    minute=$((RANDOM % 60))
+    crontab -l > $tmp_crontab
+    [[ $? -eq 0 ]] || fatal "Unable to write to $tmp_crontab"
+    echo '' >>$tmp_crontab
+    echo '# update the global_zones.json file' >>$tmp_crontab
+    echo "$minute * * * * /opt/triton/prometheus/bin/update_global_zones.sh >>/var/log/update_global_zones.log 2>&1" >>$tmp_crontab
+    crontab $tmp_crontab
+    [[ $? -eq 0 ]] || fatal "Unable import crontab"
+    rm -f $tmp_crontab
+}
+
+
 # ---- mainline
 
 prometheus_setup_delegate_dataset
@@ -196,6 +216,8 @@ else # "$FLAVOR" == "triton"
     source /opt/smartdc/boot/lib/util.sh
     sdc_common_setup
 
+    prometheus_initialize_global_zones_json
+    prometheus_setup_crontab
     prometheus_setup_named
     prometheus_setup_prometheus
 

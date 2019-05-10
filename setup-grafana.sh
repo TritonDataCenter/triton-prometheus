@@ -4,7 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Copyright (c) 2018 Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 #
@@ -69,7 +69,14 @@ headnode_uuid=\$(sysinfo | json UUID)
 admin_uuid=\$(sdc-useradm get admin | json uuid)
 admin_network_uuid=\$(sdc-napi /networks?name=admin | json -H 0.uuid)
 external_network_uuid=\$(sdc-napi /networks?name=external | json -H 0.uuid)
-package=\$(sdc-papi /packages | json -Ha uuid max_physical_memory | sort -n -k 2 \
+
+# Find package
+# - Exclude packages with "brand" set to limit to a provision of a particular
+#   brand (e.g. brand=bhyve ones that have shown up recently for flexible
+#   disk support).
+package=\$(sdc-papi /packages \
+    | json -c '!this.brand' -Ha uuid max_physical_memory \
+    | sort -n -k 2 \
     | while read uuid mem; do
 
     # Find the first one with at least ${MIN_MEMORY}

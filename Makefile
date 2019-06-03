@@ -14,8 +14,8 @@ GO_PREBUILT_VERSION = 1.11.1
 NODE_PREBUILT_VERSION = v6.15.1
 ifeq ($(shell uname -s),SunOS)
     NODE_PREBUILT_TAG=zone
-    # Allow building on other than sdc-minimal-multiarch-lts@15.4.1
-    NODE_PREBUILT_IMAGE=18b094b0-eb01-11e5-80c1-175dac7ddf02
+    # Allow building on other than triton-origin-multiarch-18.1.0
+    NODE_PREBUILT_IMAGE=1ad363ec-3b83-11e8-8521-2f68a4a34d5d
 endif
 
 ENGBLD_USE_BUILDIMAGE = true

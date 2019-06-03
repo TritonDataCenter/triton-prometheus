@@ -1,0 +1,40 @@
+{
+    "registration": {
+        {{#is_manta_service}}
+            "domain": "{{SERVICE_NAME}}",
+        {{/is_manta_service}}
+        {{^is_manta_service}}
+            "domain": "{{SERVICE_NAME}}.{{datacenter_name}}.{{dns_domain}}",
+        {{/is_manta_service}}
+        "type": "load_balancer",
+        "service": {
+            "type": "service",
+            "service": {
+                "srvce": "_prometheus",
+                "proto": "_tcp",
+                "port": 9090
+            },
+            "ttl": 60
+        },
+        "ttl": 30
+    },
+
+    "zookeeper": {
+        "servers": [
+            {{#ZK_SERVERS}}
+                {
+                    "host": "{{host}}",
+                    "port": {{port}}
+                }{{^last}}, {{/last}}
+            {{/ZK_SERVERS}}
+        ],
+        "timeout": 60000
+    },
+
+    {{#is_manta_service}}
+        "adminIp": "{{auto.MANTA_IP}}"
+    {{/is_manta_service}}
+    {{^is_manta_service}}
+        "adminIp": "{{auto.ADMIN_IP}}"
+    {{/is_manta_service}}
+}

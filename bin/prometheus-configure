@@ -169,7 +169,9 @@ PAYLOAD
 # Side-effect: Updates "UPDATES_MADE" global.
 #
 function prometheus_configure_get_resolver_ips() {
+    local cns_ips
     local resolvers
+    local status
     local tries=10
     local try
 
@@ -184,10 +186,14 @@ function prometheus_configure_get_resolver_ips() {
     for (( try = 0; try < ${tries}; try++ )); do
         for resolver in ${resolvers}; do
 
-            CNS_IP=$(dig @${resolver} +short +time=10 \
-                cns.${DATACENTER_NAME}.${DNS_DOMAIN} | head -1)
+            set +o errexit
+            cns_ips=$(dig @${resolver} +short +time=10 \
+                cns.${DATACENTER_NAME}.${DNS_DOMAIN})
+            status=${?}
+            CNS_IP=$(echo "${cns_ips}" | head -1)
+            set -o errexit
 
-            if [[ -n "${CNS_IP}" ]]; then
+            if [[ ${status} -eq 0 && -n "${CNS_IP}" ]]; then
                 BINDER_IP=${resolver}
                 return 0
             fi

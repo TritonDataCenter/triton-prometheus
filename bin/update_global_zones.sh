@@ -59,7 +59,7 @@ curl -sS -k --max-time 120 \
     --key ${CMON_KEY_FILE} \
     https://${CMON_HOST}:9163/v1/gz/discover \
     | json cns \
-    | json -e "this.targets=[this.server_uuid+'.cmon.blackstump.cns.joyent.us:9163']; this.server_uuid=undefined; this.labels={'job': 'global_zones_${DATACENTER_NAME}'}" \
+    | json -e "this.targets=[this.server_uuid+'.${CMON_HOST}:9163']; this.server_uuid=undefined; this.labels={'job': 'global_zones_${DATACENTER_NAME}'}" \
     > ${OUTPUT_FILE_TMP}
 
 # If there was an error we'll go to cleanup() thanks to errexit & pipefail

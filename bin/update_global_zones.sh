@@ -40,7 +40,21 @@ trap cleanup EXIT
 
 echo "[$(date -u)] Updating global_zones.json"
 
+#
+# We have to do the lookup ourselves since we want to use the local resolver,
+# but neither the pkgsrc nor the platform curl supports the --dns-servers
+# option.
+#
+# This command does the lookup and returns the IPs comma separated.
+#
+CMON_HOST_IPS=$(dig +short ${CMON_HOST} @127.0.0.1 | awk '{printf "%s%s",sep,$1; sep=","} END{print ""}')
+if [[ -z ${CMON_HOST_IPS} ]]; then
+    echo "Failed to get IPs for CMON host ${CMON_HOST}" >&2
+    exit 1
+fi
+
 curl -sS -k --max-time 120 \
+    --resolve ${CMON_HOST}:9163:${CMON_HOST_IPS} \
     -E ${CMON_CERT_FILE} \
     --key ${CMON_KEY_FILE} \
     https://${CMON_HOST}:9163/v1/gz/discover \

@@ -70,9 +70,9 @@ deployed using `sdcadm` or `manta-adm`.
 | ------------------------------ | ------- | ----------- |
 | **cmon\_domain**               | String  | Optional. The domain at which Prometheus should talk to this DC's CMON, e.g. "cmon.us-east-1.triton.zone". The actual endpoint is assumed to be https and port 9163. See notes below. |
 | **cmon\_enforce\_certificate** | Bool    | Optional. This can be set to `true` to have Prometheus fail on TLS cert errors from a self-signed cert. This is false by default. |
-| **scrape\_interval**           | Integer | Optional. The interval, in seconds, at which Prometheus should scrape its targets. Defaults to 60. |
+| **scrape\_interval**           | Integer | Optional. The interval, in seconds, at which Prometheus should scrape its targets. Defaults to 10. |
 | **scrape\_timeout**            | Integer | Optional. The amount of time, in seconds, that is allotted for each scrape to complete. Defaults to 10. |
-| **evaluation\_interval**       | Integer | Optional. The interval, in seconds, at which Prometheus should evaluate its alerting rules. Defaults to 60. |
+| **evaluation\_interval**       | Integer | Optional. The interval, in seconds, at which Prometheus should evaluate its alerting rules. Defaults to 10. |
 
 Prometheus gets its metrics from the DC's local CMON, typically over the
 external network. To auth with CMON properly in a production environment,

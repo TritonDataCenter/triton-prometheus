@@ -3,9 +3,9 @@ global:
   # These three numeric values can be set as SAPI config variables. If these
   # variables are not set, the defaults used by the instance's setup scripts
   # are:
-  # - scrape_interval: 60s
+  # - scrape_interval: 10s
   # - scrape_timeout: 10s
-  # - evaluation_interval: 60s
+  # - evaluation_interval: 10s
   #
   # These variables may be set manually or by `sdcadm` or `manta-adm`, which may
   # specify their own application- and size-specific defaults.

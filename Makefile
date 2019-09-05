@@ -10,7 +10,6 @@
 
 NAME = prometheus
 
-HOME = /root
 GO_PREBUILT_VERSION = 1.12.1
 NODE_PREBUILT_VERSION = v6.17.0
 ifeq ($(shell uname -s),SunOS)

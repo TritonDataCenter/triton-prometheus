@@ -2,7 +2,7 @@
 
 ## 1.1.0
 
-TRITON-1650 Add support for global zone discovery on Triton.
+TRITON-1650 Add support for global zone discovery on Triton
 
 ## 1.0.2
 

@@ -146,7 +146,7 @@ ARPA_ZONE
 function prometheus_setup_prometheus {
     mkdir -p "${DATA_DIR}"
 
-    /usr/sbin/svccfg import /opt/triton/prometheus/smf/manifests/prometheus.xml
+    /usr/sbin/svccfg import ${ROOT_DIR}/smf/manifests/prometheus.xml
 
     #
     # Set up key and client certificate used to auth with this DC's CMON.
@@ -154,7 +154,7 @@ function prometheus_setup_prometheus {
     echo 'Generating key and client cert for CMON auth'
     mkdir -p "${CMON_AUTH_DIR}"
     "${NODE}" '--abort_on_uncaught_exception' \
-        /opt/triton/prometheus/bin/certgen "${FLAVOR}"
+        ${ROOT_DIR}/bin/certgen "${FLAVOR}"
 
     #
     # The prometheus SMF service runs as the 'nobody' user, so the files it
@@ -170,8 +170,29 @@ function prometheus_setup_prometheus {
     # prometheus-configure contains the common setup code that must be run here
     # and also on config-agent updates
     #
-    TRACE=1 /opt/triton/prometheus/bin/prometheus-configure
+    TRACE=1 ${ROOT_DIR}/bin/prometheus-configure
 }
+
+function prometheus_initialize_global_zones_json {
+    # Start with an empty file
+    echo '[]' > ${ROOT_DIR}/etc/global_zones.json
+}
+
+function prometheus_setup_crontab {
+    # Setup crontab
+    tmp_crontab=/tmp/prometheus-$$.cron
+    minute=$((RANDOM % 60))
+    crontab -l > ${tmp_crontab}
+    [[ $? -eq 0 ]] || fatal "Unable to write to ${tmp_crontab}"
+    echo '' >>${tmp_crontab}
+    echo '# update the global_zones.json file' >>${tmp_crontab}
+    # BASHSTYLED
+    echo "${minute} * * * * ${ROOT_DIR}/bin/update_global_zones.sh >>/var/log/update_global_zones.log 2>&1" >>${tmp_crontab}
+    crontab ${tmp_crontab}
+    [[ $? -eq 0 ]] || fatal 'Unable to import crontab'
+    rm -f ${tmp_crontab}
+}
+
 
 # ---- mainline
 
@@ -185,7 +206,7 @@ if [[ "${FLAVOR}" == 'manta' ]]; then
     source "${MANTA_SCRIPTS_DIR}/services.sh"
 
     manta_common_presetup
-    manta_add_manifest_dir '/opt/triton/prometheus'
+    manta_add_manifest_dir "${ROOT_DIR}"
     manta_common_setup 'prometheus' 0
 
     prometheus_setup_named
@@ -195,10 +216,12 @@ if [[ "${FLAVOR}" == 'manta' ]]; then
 
 else # "$FLAVOR" == "triton"
 
-    CONFIG_AGENT_LOCAL_MANIFESTS_DIRS=/opt/triton/prometheus
+    CONFIG_AGENT_LOCAL_MANIFESTS_DIRS=${ROOT_DIR}
     source /opt/smartdc/boot/lib/util.sh
     sdc_common_setup
 
+    prometheus_initialize_global_zones_json
+    prometheus_setup_crontab
     prometheus_setup_named
     prometheus_setup_prometheus
 
@@ -207,6 +230,10 @@ else # "$FLAVOR" == "triton"
     sdc_log_rotation_add registrar /var/svc/log/*registrar*.log 1g
     sdc_log_rotation_add prometheus /var/svc/log/*prometheus*.log 1g
     sdc_log_rotation_setup_end
+
+    # Update the global_zones.json the first time
+    ${ROOT_DIR}/bin/update_global_zones.sh \
+        >>/var/log/update_global_zones.log 2>&1
 
     sdc_setup_complete
 fi

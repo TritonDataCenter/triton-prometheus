@@ -1,5 +1,9 @@
 # triton-prometheus changes
 
+## 1.1.1
+
+TRITON-1895 Fix so mdata:execute doesn't go to maintenance when DNS is broken
+
 ## 1.1.0
 
 TRITON-1650 Add support for global zone discovery on Triton

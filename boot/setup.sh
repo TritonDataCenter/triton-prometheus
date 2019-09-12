@@ -21,7 +21,6 @@ export PS4='[\D{%FT%TZ}] ${BASH_SOURCE}:${LINENO}: '\
 
 set -o errexit
 set -o pipefail
-set -o xtrace
 
 PATH=/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin
 
@@ -231,9 +230,16 @@ else # "$FLAVOR" == "triton"
     sdc_log_rotation_add prometheus /var/svc/log/*prometheus*.log 1g
     sdc_log_rotation_setup_end
 
-    # Update the global_zones.json the first time
+    #
+    # Update the global_zones.json the first time.
+    #
+    # We disable errexit so that failure to update because external services
+    # (DNS) are broken does not abort the completion of setup.
+    #
+    set +o errexit
     ${ROOT_DIR}/bin/update_global_zones.sh \
         >>/var/log/update_global_zones.log 2>&1
+    set -o errexit
 
     sdc_setup_complete
 fi

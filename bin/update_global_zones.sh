@@ -28,6 +28,7 @@ CONFIG_JSON=${CONF_DIR}/config.json
 DATACENTER_NAME=$(json -f "${CONFIG_JSON}" datacenter)
 DNS_DOMAIN=$(json -f "${CONFIG_JSON}" dns_domain)
 CMON_HOST="cmon.${DATACENTER_NAME}.cns.${DNS_DOMAIN}"
+CMON_LOOKUP_RETRIES=10
 
 function cleanup {
     exit_code=$?
@@ -48,7 +49,21 @@ echo "[$(date -u)] Updating global_zones.json"
 #
 # This command does the lookup and returns the IPs comma separated.
 #
-CMON_HOST_IPS=$(dig +short ${CMON_HOST} @127.0.0.1 | awk '{printf "%s%s",sep,$1; sep=","} END{print ""}')
+CMON_HOST_IPS=
+while [[ -z ${CMON_HOST_IPS} && ${CMON_LOOKUP_RETRIES} -gt 0 ]]; do
+    CMON_HOST_IPS=$(dig +short ${CMON_HOST} @127.0.0.1 | awk '{printf "%s%s",sep,$1; sep=","} END{print ""}')
+
+    #
+    # When we're setting up for the first time, DNS can take a while to start
+    # working. We'll retry forever (or until SMF kills us) since there's nothing
+    # we can do until we figure out where CMON is.
+    #
+    # If we're not in setup, we'll retry only CMON_LOOKUP_RETRIES times.
+    #
+    if [[ -f /var/svc/setup_complete ]]; then
+        CMON_LOOKUP_RETRIES=$((CMON_LOOKUP_RETRIES - 1))
+    fi
+done
 if [[ -z ${CMON_HOST_IPS} ]]; then
     echo "Failed to get IPs for CMON host ${CMON_HOST}" >&2
     exit 1

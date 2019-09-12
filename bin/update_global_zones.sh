@@ -15,6 +15,7 @@
 
 set -o errexit
 set -o pipefail
+set -o xtrace
 
 ROOT_DIR=/opt/triton/prometheus
 CMON_AUTH_DIR=${ROOT_DIR}/keys

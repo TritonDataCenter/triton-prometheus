@@ -27,13 +27,6 @@ pipeline {
                 sh('make check')
             }
         }
-        // this may involve effectively building twice,
-        // but the build is fast, so perhaps acceptable.
-        stage('test') {
-            steps{
-                sh('make test')
-            }
-        }
         // avoid bundling devDependencies
         stage('re-clean') {
             steps {

@@ -1,5 +1,10 @@
 # triton-prometheus
 
+This repository is part of the Joyent Triton and Manta projects.
+For contribution guidelines, issues, and general documentation, visit the main
+[Triton](http://github.com/joyent/triton) and
+[Manta](http://github.com/joyent/manta) project pages.
+
 The Triton and Manta core Prometheus service. Triton and Manta use Prometheus
 and [Grafana](https://github.com/joyent/triton-grafana) to track their own
 metrics and monitor themselves. All metrics are gathered via
@@ -8,6 +13,19 @@ metrics and monitor themselves. All metrics are gathered via
 This repo builds one zone image which can be deployed as an instance of a Triton
 or Manta service. The targets Prometheus scrapes will depend on whether the
 instance is deployed as part of Triton or Manta.
+
+
+## Active Branches
+
+There are currently two active branches of this repository, for the two
+active major versions of Manta. See the [mantav2 overview
+document](https://github.com/joyent/manta/blob/master/docs/mantav2.md) for
+details on major Manta versions.
+
+- [`master`](../../tree/master/) - For development of mantav2, the latest
+  version of Manta. This is the version used by Triton.
+- [`mantav1`](../../tree/mantav1/) - For development of mantav1, the long
+  term support maintenance version of Manta.
 
 
 ## Status

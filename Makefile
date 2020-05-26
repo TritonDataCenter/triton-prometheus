@@ -5,7 +5,7 @@
 #
 
 #
-# Copyright 2019 Joyent, Inc.
+# Copyright 2020 Joyent, Inc.
 #
 
 NAME = prometheus
@@ -35,6 +35,9 @@ BUILDIMAGE_NAME = mantav1-$(NAME)
 BUILDIMAGE_PKGSRC = bind-9.11.9
 BUILDIMAGE_DESC = Triton/Manta Prometheus
 AGENTS = amon config registrar
+
+# For mantav1, specify the branch to compare copyrights with
+ENGBLD_CHECK_COPYRIGHT_ARGS = -b mantav1
 
 RELEASE_TARBALL := $(NAME)-pkg-$(STAMP).tar.gz
 RELSTAGEDIR := /tmp/$(NAME)-$(STAMP)

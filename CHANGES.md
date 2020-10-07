@@ -1,5 +1,9 @@
 # triton-prometheus changes
 
+## 1.1.2
+
+TRITON-2172 Prometheus build is failing due to missing bind-9.11.19
+
 ## 1.1.1
 
 TRITON-1895 Fix so mdata:execute doesn't go to maintenance when DNS is broken

@@ -49,6 +49,7 @@ pipeline {
             steps {
                 sh('''
 export GO_ENV="$GO_ENV HOME=$JENKINS_HOME";
+export GO111MODULE=on;
 export ENGBLD_BITS_UPLOAD_IMGAPI=true;
 make print-BRANCH print-STAMP all release publish buildimage bits-upload;
 ''')

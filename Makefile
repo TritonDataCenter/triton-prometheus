@@ -5,12 +5,13 @@
 #
 
 #
-# Copyright 2020 Joyent, Inc.
+# Copyright 2021 Joyent, Inc.
 #
 
 NAME = prometheus
 
 GO_PREBUILT_VERSION = 1.12.1
+GO111MODULE = on
 NODE_PREBUILT_VERSION = v6.17.0
 ifeq ($(shell uname -s),SunOS)
     NODE_PREBUILT_TAG=zone64

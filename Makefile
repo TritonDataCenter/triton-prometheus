@@ -5,7 +5,7 @@
 #
 
 #
-# Copyright 2021 Joyent, Inc.
+# Copyright 2020 Joyent, Inc.
 #
 
 NAME = prometheus

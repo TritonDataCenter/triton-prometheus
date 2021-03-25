@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright 2021 Joyent, Inc.
+ * Copyright 2020 Joyent, Inc.
  */
 
 @Library('jenkins-joylib@v1.0.6') _
@@ -49,7 +49,6 @@ pipeline {
             steps {
                 sh('''
 export GO_ENV="$GO_ENV HOME=$JENKINS_HOME";
-export GO111MODULE=on;
 export ENGBLD_BITS_UPLOAD_IMGAPI=true;
 make print-BRANCH print-STAMP all release publish buildimage bits-upload;
 ''')

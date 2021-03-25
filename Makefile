@@ -10,7 +10,7 @@
 
 NAME = prometheus
 
-GO_PREBUILT_VERSION = 1.12.1
+GO_PREBUILT_VERSION = 1.16.2
 NODE_PREBUILT_VERSION = v6.17.0
 ifeq ($(shell uname -s),SunOS)
     NODE_PREBUILT_TAG=zone64
@@ -66,7 +66,7 @@ $(PROMETHEUS_EXEC): deps/prometheus/.git $(STAMP_GO_TOOLCHAIN)
 	mkdir -p $(dir $(PROMETHEUS_GO_DIR))
 	rm -f $(PROMETHEUS_GO_DIR)
 	ln -s $(TOP)/deps/prometheus $(PROMETHEUS_GO_DIR)
-	(cd $(PROMETHEUS_GO_DIR) && env -i; export GO111MODULE=auto; $(GO_ENV) make build)
+	(cd $(PROMETHEUS_GO_DIR) && env -i $(GO_ENV) make build)
 
 $(STAMP_CERTGEN): | $(NODE_EXEC) $(NPM_EXEC)
 	$(MAKE_STAMP_REMOVE)

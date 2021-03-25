@@ -5,7 +5,7 @@
 #
 
 #
-# Copyright 2020 Joyent, Inc.
+# Copyright 2021 Joyent, Inc.
 #
 
 NAME = prometheus
@@ -66,7 +66,7 @@ $(PROMETHEUS_EXEC): deps/prometheus/.git $(STAMP_GO_TOOLCHAIN)
 	mkdir -p $(dir $(PROMETHEUS_GO_DIR))
 	rm -f $(PROMETHEUS_GO_DIR)
 	ln -s $(TOP)/deps/prometheus $(PROMETHEUS_GO_DIR)
-	(cd $(PROMETHEUS_GO_DIR) && env -i $(GO_ENV) make build)
+	(cd $(PROMETHEUS_GO_DIR) && env -i $(GO_ENV) GO111MODULE=on make build)
 
 $(STAMP_CERTGEN): | $(NODE_EXEC) $(NPM_EXEC)
 	$(MAKE_STAMP_REMOVE)

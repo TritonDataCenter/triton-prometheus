@@ -47,6 +47,7 @@ pipeline {
             steps {
                 sh('''
 pkgin -y install yarn-1.12.3 nodejs-10.14.2;
+pkg_add -u https://us-east.manta.joyent.com/pkgsrc/public/packages/SmartOS/2020Q2/x86_64/All/nodejs-14.4.0.tgz
 export GO_ENV="$GO_ENV HOME=$JENKINS_HOME";
 export ENGBLD_BITS_UPLOAD_IMGAPI=true;
 make print-BRANCH print-STAMP all release publish buildimage bits-upload;

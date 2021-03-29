@@ -12,9 +12,7 @@
 
 pipeline {
 
-    agent {
-        label joyCommonLabels(image_ver: '18.4.0')
-    }
+    agent { node('4d710448-18.4.0-x64') }
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '30'))
@@ -48,7 +46,7 @@ pipeline {
         stage('build image and upload') {
             steps {
                 sh('''
-pkgin -y install yarn;
+pkgin -y install yarn-1.12.3 nodejs-10.14.2;
 export GO_ENV="$GO_ENV HOME=$JENKINS_HOME";
 export ENGBLD_BITS_UPLOAD_IMGAPI=true;
 make print-BRANCH print-STAMP all release publish buildimage bits-upload;

@@ -32,7 +32,9 @@ endif
 # triton-origin-x86_64-18.4.0
 BASE_IMAGE_UUID = a9368831-958e-432d-a031-f8ce6768d190
 BUILDIMAGE_NAME = mantav2-$(NAME)
-BUILDIMAGE_PKGSRC = bind-9.11.22
+BUILDIMAGE_PKGSRC = bind-9.11.22 \
+	yarn-1.12.3\
+
 BUILDIMAGE_DESC = Triton/Manta Prometheus
 AGENTS = amon config registrar
 
@@ -66,7 +68,7 @@ $(PROMETHEUS_EXEC): deps/prometheus/.git $(STAMP_GO_TOOLCHAIN)
 	mkdir -p $(dir $(PROMETHEUS_GO_DIR))
 	rm -f $(PROMETHEUS_GO_DIR)
 	ln -s $(TOP)/deps/prometheus $(PROMETHEUS_GO_DIR)
-	(cd $(PROMETHEUS_GO_DIR) && env -i; export GO111MODULE=auto; $(GO_ENV) make build)
+	(cd $(PROMETHEUS_GO_DIR) && env -i $(GO_ENV); export GOOS=illumos; make build)
 
 $(STAMP_CERTGEN): | $(NODE_EXEC) $(NPM_EXEC)
 	$(MAKE_STAMP_REMOVE)

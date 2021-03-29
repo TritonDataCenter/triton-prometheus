@@ -48,7 +48,7 @@ pipeline {
         stage('build image and upload') {
             steps {
                 sh('''
-pkgin in yarn;
+pkgin -y install yarn;
 export GO_ENV="$GO_ENV HOME=$JENKINS_HOME";
 export ENGBLD_BITS_UPLOAD_IMGAPI=true;
 make print-BRANCH print-STAMP all release publish buildimage bits-upload;

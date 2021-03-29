@@ -11,7 +11,7 @@
 NAME = prometheus
 
 GO_PREBUILT_VERSION = 1.16.2
-GOOS=illumos
+GOOS = illumos
 NODE_PREBUILT_VERSION = v6.17.0
 ifeq ($(shell uname -s),SunOS)
     NODE_PREBUILT_TAG=zone64
@@ -33,8 +33,7 @@ endif
 # triton-origin-x86_64-18.4.0
 BASE_IMAGE_UUID = a9368831-958e-432d-a031-f8ce6768d190
 BUILDIMAGE_NAME = mantav2-$(NAME)
-BUILDIMAGE_PKGSRC = bind-9.11.22 \
-	yarn-1.12.3 \
+BUILDIMAGE_PKGSRC = bind-9.11.22 yarn-1.12.3
 
 BUILDIMAGE_DESC = Triton/Manta Prometheus
 AGENTS = amon config registrar

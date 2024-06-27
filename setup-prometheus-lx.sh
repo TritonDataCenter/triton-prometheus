@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 # Copyright 2019 Joyent, Inc.
+# Copyright 2024 MNX Cloud, Inc.
 #
 
 #
@@ -130,7 +131,7 @@ vm_uuid=$(sdc-vmadm list alias=$ALIAS owner_uuid=${admin_uuid} -H -o uuid)
 
 if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
     echo "Image ${IMAGE_UUID} not found: importing now; must delete in event of rollback"
-    sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
+    sdc-imgadm import -S https://images.tritondatacenter.com ${IMAGE_UUID} </dev/null
 fi
 
 # Setup for CNS to actually work

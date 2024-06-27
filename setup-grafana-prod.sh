@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 # Copyright (c) 2018 Joyent, Inc.
+# Copyright 2024 MNX Cloud, Inc.
 #
 
 #
@@ -13,7 +14,8 @@
 # already exist.
 #
 # Afterwards, it will print the Grafana URL. It is provisioned with the
-# latest dashboards defined in https://github.com/joyent/triton-grafana.
+# latest dashboards defined in
+# https://github.com/TritonDataCenter/triton-grafana.
 # It takes a few minutes for the discovery process to complete before
 # you'll see any metrics.
 #
@@ -123,7 +125,7 @@ vm_uuid=$(sdc-vmadm list alias=$ALIAS owner_uuid=${admin_uuid} -H -o uuid)
 [[ -z "$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
 if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
-    sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
+    sdc-imgadm import -S https://images.tritondatacenter.com ${IMAGE_UUID} </dev/null
 fi
 
 external_network_uuid=$(sdc-napi /networks?name=external | json -H 0.uuid)
@@ -177,7 +179,7 @@ ssh ${SSH_OPTS} ${server_ip} <<SERVER
 cd /zones/${vm_uuid}/root/root
 
 # Download dashboards, grafana, node
-curl -Lk -o triton-grafana-master.tgz https://github.com/joyent/triton-grafana/archive/master.tar.gz
+curl -Lk -o triton-grafana-master.tgz https://github.com/TritonDataCenter/triton-grafana/archive/master.tar.gz
 tar -zxvf triton-grafana-master.tgz
 mv triton-grafana-master triton-grafana
 

@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 # Copyright 2019 Joyent, Inc.
+# Copyright 2024 MNX Cloud, Inc.
 #
 
 #
@@ -61,7 +62,7 @@ vm_uuid=\$(vmadm lookup alias=$ALIAS)
 [[ -z "\$vm_uuid" ]] || fatal "VM $ALIAS already exists"
 
 if ! sdc-imgadm get ${IMAGE_UUID} >/dev/null 2>&1; then
-    sdc-imgadm import -S https://images.joyent.com ${IMAGE_UUID} </dev/null
+    sdc-imgadm import -S https://images.tritondatacenter.com ${IMAGE_UUID} </dev/null
 fi
 
 # Setup for CNS to actually work

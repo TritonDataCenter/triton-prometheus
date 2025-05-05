@@ -78,7 +78,7 @@ $(STAMP_YARN): | $(NODE_EXEC) $(NPM_EXEC)
 # Link the "prometheus" submodule into the correct place within our
 # project-local GOPATH, then build the binary.
 #
-$(PROMETHEUS_EXEC): deps/prometheus/.git $(STAMP_GO_TOOLCHAIN)
+$(PROMETHEUS_EXEC): deps/prometheus/.git $(STAMP_GO_TOOLCHAIN) $(STAMP_YARN)
 	$(GO) version
 	mkdir -p $(dir $(PROMETHEUS_GO_DIR))
 	rm -f $(PROMETHEUS_GO_DIR)

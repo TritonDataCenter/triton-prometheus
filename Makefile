@@ -17,13 +17,14 @@ ifeq ($(shell uname -s),SunOS)
     NODE_PREBUILT_TAG=zone64
     # minimal-64-lts 21.4.0
     NODE_PREBUILT_IMAGE=a7199134-7e94-11ec-be67-db6f482136c2
-    BUILD_PLATFORM  = 20210826T002459Z
 endif
 
 ENGBLD_USE_BUILDIMAGE = true
 ENGBLD_REQUIRE := $(shell git submodule update --init deps/eng)
 include ./deps/eng/tools/mk/Makefile.defs
 TOP ?= $(error Unable to access eng.git submodule Makefiles.)
+
+BUILD_PLATFORM  = 20210826T002459Z
 
 include ./deps/eng/tools/mk/Makefile.smf.defs
 ifeq ($(shell uname -s),SunOS)
@@ -49,16 +50,29 @@ ESLINT_FILES := $(JS_FILES)
 BASH_FILES := $(wildcard boot/*.sh) $(TOP)/bin/prometheus-configure
 
 STAMP_CERTGEN := $(MAKE_STAMPS_DIR)/certgen
+STAMP_YARN := $(MAKE_STAMPS_DIR)/yarn
 
 PROMETHEUS_IMPORT = github.com/prometheus/prometheus
 PROMETHEUS_GO_DIR = $(GO_GOPATH)/src/$(PROMETHEUS_IMPORT)
 PROMETHEUS_EXEC = $(PROMETHEUS_GO_DIR)/prometheus
+
+# Add yarn to PATH for prometheus assets build script
+ifeq ($(shell uname -s),SunOS)
+       GO_ENV+=PATH="$(TOP)/$(GO_INSTALL)/bin:$(TOP)/$(CACHE_DIR)/yarn/node_modules/.bin:$$PATH"
+endif
 
 #
 # Repo-specific targets
 #
 .PHONY: all
 all: $(PROMETHEUS_EXEC) $(STAMP_CERTGEN) sdc-scripts manta-scripts
+
+$(STAMP_YARN): | $(NODE_EXEC) $(NPM_EXEC)
+       $(MAKE_STAMP_REMOVE)
+       rm -rf $(CACHE_DIR)/yarn
+       mkdir -p $(CACHE_DIR)/yarn/node_modules
+       cd $(CACHE_DIR)/yarn && $(NPM) install --global-style yarn
+       $(MAKE_STAMP_CREATE)
 
 #
 # Link the "prometheus" submodule into the correct place within our
@@ -69,7 +83,7 @@ $(PROMETHEUS_EXEC): deps/prometheus/.git $(STAMP_GO_TOOLCHAIN)
 	mkdir -p $(dir $(PROMETHEUS_GO_DIR))
 	rm -f $(PROMETHEUS_GO_DIR)
 	ln -s $(TOP)/deps/prometheus $(PROMETHEUS_GO_DIR)
-	(cd $(PROMETHEUS_GO_DIR) && env -i $(GO_ENV) make common-build)
+	(cd $(PROMETHEUS_GO_DIR) && env -i $(GO_ENV) make build)
 
 $(STAMP_CERTGEN): | $(NODE_EXEC) $(NPM_EXEC)
 	$(MAKE_STAMP_REMOVE)

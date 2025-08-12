@@ -6,7 +6,7 @@
 
 #
 # Copyright 2020 Joyent, Inc.
-# Copyright 2025 MNX Cloud, Inc.
+# Copyright 2025 Edgecast Cloud LLC.
 #
 
 NAME = prometheus

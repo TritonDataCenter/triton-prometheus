@@ -33,8 +33,8 @@ ifeq ($(shell uname -s),SunOS)
     include ./deps/eng/tools/mk/Makefile.agent_prebuilt.defs
 endif
 
-# triton-origin-x86_64-21.4.1
-BASE_IMAGE_UUID = 85d0f826-0131-11ed-973d-2bfeef68011c
+# triton-origin-x86_64-21.4.0
+BASE_IMAGE_UUID = 502eeef2-8267-489f-b19c-a206906f57ef
 BUILDIMAGE_NAME = mantav2-$(NAME)
 BUILDIMAGE_PKGSRC = bind-9.11.37
 BUILDIMAGE_DESC = Triton/Manta Prometheus

@@ -15,8 +15,8 @@ GO_PREBUILT_VERSION = 1.14
 NODE_PREBUILT_VERSION = v6.17.1
 ifeq ($(shell uname -s),SunOS)
     NODE_PREBUILT_TAG=zone64
-    # minimal-64-lts 21.4.0
-    NODE_PREBUILT_IMAGE=a7199134-7e94-11ec-be67-db6f482136c2
+    # minimal-64-lts 21.4.1
+    NODE_PREBUILT_IMAGE=c3331440-012e-11ed-b9de-df56921591c9 
 endif
 
 ENGBLD_USE_BUILDIMAGE = true
@@ -33,8 +33,8 @@ ifeq ($(shell uname -s),SunOS)
     include ./deps/eng/tools/mk/Makefile.agent_prebuilt.defs
 endif
 
-# triton-origin-x86_64-21.4.0
-BASE_IMAGE_UUID = 502eeef2-8267-489f-b19c-a206906f57ef
+# triton-origin-x86_64-21.4.1
+BASE_IMAGE_UUID = 85d0f826-0131-11ed-973d-2bfeef68011c
 BUILDIMAGE_NAME = mantav2-$(NAME)
 BUILDIMAGE_PKGSRC = bind-9.11.37
 BUILDIMAGE_DESC = Triton/Manta Prometheus

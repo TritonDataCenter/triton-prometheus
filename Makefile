@@ -15,8 +15,8 @@ GO_PREBUILT_VERSION = 1.14
 NODE_PREBUILT_VERSION = v6.17.1
 ifeq ($(shell uname -s),SunOS)
     NODE_PREBUILT_TAG=zone64
-    # minimal-64-lts 21.4.1
-    NODE_PREBUILT_IMAGE=c3331440-012e-11ed-b9de-df56921591c9 
+    # minimal-64-lts 21.4.0
+    NODE_PREBUILT_IMAGE=a7199134-7e94-11ec-be67-db6f482136c2
 endif
 
 ENGBLD_USE_BUILDIMAGE = true

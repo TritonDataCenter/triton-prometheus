@@ -235,7 +235,7 @@ function prometheus_write_config() {
     local commands=''
 
     basename=$(basename "${config_file}")
-    template_file=${TEMPLATES_DIR}/${basename}.in
+    template_file=${TEMPLATES_DIR}/${FLAVOR}-${basename}.in
     shift 2
 
     for var in "${@}"; do

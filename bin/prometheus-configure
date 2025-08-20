@@ -227,15 +227,13 @@ function prometheus_configure_get_resolver_ips() {
 function prometheus_write_config() {
     local config_file="${1}"
     local update_var="${2}"
+    local template_file="${3}"
     local basename
     local contents
-    local template_file
     local delim='%%'
     # semicolon-separated list of sed commands to run
     local commands=''
 
-    basename=$(basename "${config_file}")
-    template_file=${TEMPLATES_DIR}/${FLAVOR}-${basename}.in
     shift 2
 
     for var in "${@}"; do
@@ -276,8 +274,9 @@ function prometheus_configure_update_named_config {
     [[ -n "${CNS_IP}" ]] || fatal 'CNS_IP not set'
     [[ -n "${BINDER_IP}" ]] || fatal 'BINDER_IP not set'
 
-    prometheus_write_config "${NAMED_CONFIG}" BIND_UPDATES_MADE NAMED_DIR \
-        NAMED_LOG_DIR CNS_IP BINDER_IP DATACENTER_NAME DNS_DOMAIN
+    prometheus_write_config "${NAMED_CONFIG}" \
+        "${TEMPLATES_DIR}/$(basename ${NAMED_CONFIG}).in" BIND_UPDATES_MADE \
+        NAMED_DIR NAMED_LOG_DIR CNS_IP BINDER_IP DATACENTER_NAME DNS_DOMAIN
 }
 
 #
@@ -332,9 +331,11 @@ function prometheus_configure_update_config() {
         EVALUATION_INTERVAL=${DEFAULT_EVALUATION_INTERVAL}
     fi
 
-    prometheus_write_config "${PROMETHEUS_YML}" UPDATES_MADE PROM_USER \
-        DATACENTER_NAME CMON_CERT_FILE CMON_KEY_FILE CMON_INSECURE CMON_DOMAIN \
-        SCRAPE_INTERVAL SCRAPE_TIMEOUT EVALUATION_INTERVAL
+    prometheus_write_config "${PROMETHEUS_YML}" \
+        "${TEMPLATES_DIR}/${FLAVOR}-$(basename ${PROMETHEUS_YML}).in" \
+        UPDATES_MADE PROM_USER DATACENTER_NAME CMON_CERT_FILE CMON_KEY_FILE \
+        CMON_INSECURE CMON_DOMAIN SCRAPE_INTERVAL SCRAPE_TIMEOUT \
+        EVALUATION_INTERVAL
 
     return 0
 }

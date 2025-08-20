@@ -227,15 +227,15 @@ function prometheus_configure_get_resolver_ips() {
 #
 function prometheus_write_config() {
     local config_file="${1}"
-    local update_var="${2}"
-    local template_file="${3}"
+    local template_file="${2}"
+    local update_var="${3}"
     local basename
     local contents
     local delim='%%'
     # semicolon-separated list of sed commands to run
     local commands=''
 
-    shift 2
+    shift 3
 
     for var in "${@}"; do
         # Verify that template parameter exists in template file before

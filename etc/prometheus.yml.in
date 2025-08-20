@@ -45,9 +45,7 @@ scrape_configs:
       insecure_skip_verify: %%CMON_INSECURE%%
     relabel_configs:
       - source_labels: [__meta_triton_machine_alias]
-        target_label: alias
-      - source_labels: [__meta_triton_machine_id]
-        target_label: instance
+        target_label: hostname
     triton_sd_configs:
       - account: '%%PROM_USER%%'
         role: 'cn'

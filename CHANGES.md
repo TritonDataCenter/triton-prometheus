@@ -1,5 +1,9 @@
 # triton-prometheus changes
 
+## 1.2.0
+
+TRITON-2498: update triton-prometheus to use native global zones discovery
+
 ## 1.1.2
 
 TRITON-2172 Prometheus build is failing due to missing bind-9.11.19

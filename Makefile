@@ -6,21 +6,25 @@
 
 #
 # Copyright 2020 Joyent, Inc.
+# Copyright 2025 Edgecast Cloud LLC.
 #
 
 NAME = prometheus
 
-GO_PREBUILT_VERSION = 1.12.1
-NODE_PREBUILT_VERSION = v6.17.0
+GO_PREBUILT_VERSION = 1.14
+NODE_PREBUILT_VERSION = v6.17.1
 ifeq ($(shell uname -s),SunOS)
     NODE_PREBUILT_TAG=zone64
-    NODE_PREBUILT_IMAGE=c2c31b00-1d60-11e9-9a77-ff9f06554b0f
+    # minimal-64-lts 21.4.0
+    NODE_PREBUILT_IMAGE=a7199134-7e94-11ec-be67-db6f482136c2
 endif
 
 ENGBLD_USE_BUILDIMAGE = true
 ENGBLD_REQUIRE := $(shell git submodule update --init deps/eng)
 include ./deps/eng/tools/mk/Makefile.defs
 TOP ?= $(error Unable to access eng.git submodule Makefiles.)
+
+BUILD_PLATFORM  = 20210826T002459Z
 
 include ./deps/eng/tools/mk/Makefile.smf.defs
 ifeq ($(shell uname -s),SunOS)
@@ -29,10 +33,10 @@ ifeq ($(shell uname -s),SunOS)
     include ./deps/eng/tools/mk/Makefile.agent_prebuilt.defs
 endif
 
-# triton-origin-x86_64-18.4.0
-BASE_IMAGE_UUID = a9368831-958e-432d-a031-f8ce6768d190
+# triton-origin-x86_64-21.4.0
+BASE_IMAGE_UUID = 502eeef2-8267-489f-b19c-a206906f57ef
 BUILDIMAGE_NAME = mantav2-$(NAME)
-BUILDIMAGE_PKGSRC = bind-9.11.22
+BUILDIMAGE_PKGSRC = bind-9.11.37
 BUILDIMAGE_DESC = Triton/Manta Prometheus
 AGENTS = amon config registrar
 
@@ -46,10 +50,16 @@ ESLINT_FILES := $(JS_FILES)
 BASH_FILES := $(wildcard boot/*.sh) $(TOP)/bin/prometheus-configure
 
 STAMP_CERTGEN := $(MAKE_STAMPS_DIR)/certgen
+STAMP_YARN := $(MAKE_STAMPS_DIR)/yarn
 
 PROMETHEUS_IMPORT = github.com/prometheus/prometheus
 PROMETHEUS_GO_DIR = $(GO_GOPATH)/src/$(PROMETHEUS_IMPORT)
 PROMETHEUS_EXEC = $(PROMETHEUS_GO_DIR)/prometheus
+
+# Add yarn to PATH for prometheus assets build script
+ifeq ($(shell uname -s),SunOS)
+       GO_ENV+=PATH="$(TOP)/$(GO_INSTALL)/bin:$(TOP)/$(CACHE_DIR)/yarn/node_modules/.bin:$$PATH"
+endif
 
 #
 # Repo-specific targets
@@ -57,11 +67,18 @@ PROMETHEUS_EXEC = $(PROMETHEUS_GO_DIR)/prometheus
 .PHONY: all
 all: $(PROMETHEUS_EXEC) $(STAMP_CERTGEN) sdc-scripts manta-scripts
 
+$(STAMP_YARN): | $(NODE_EXEC) $(NPM_EXEC)
+	$(MAKE_STAMP_REMOVE)
+	rm -rf $(CACHE_DIR)/yarn
+	mkdir -p $(CACHE_DIR)/yarn/node_modules
+	cd $(CACHE_DIR)/yarn && $(NPM) install --global-style yarn
+	$(MAKE_STAMP_CREATE)
+
 #
 # Link the "prometheus" submodule into the correct place within our
 # project-local GOPATH, then build the binary.
 #
-$(PROMETHEUS_EXEC): deps/prometheus/.git $(STAMP_GO_TOOLCHAIN)
+$(PROMETHEUS_EXEC): deps/prometheus/.git $(STAMP_GO_TOOLCHAIN) $(STAMP_YARN)
 	$(GO) version
 	mkdir -p $(dir $(PROMETHEUS_GO_DIR))
 	rm -f $(PROMETHEUS_GO_DIR)

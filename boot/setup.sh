@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 # Copyright 2019 Joyent, Inc.
+# Copyright 2025 Edgecast Cloud LLC.
 #
 
 #
@@ -173,27 +174,6 @@ function prometheus_setup_prometheus {
     TRACE=1 ${ROOT_DIR}/bin/prometheus-configure
 }
 
-function prometheus_initialize_global_zones_json {
-    # Start with an empty file
-    echo '[]' > ${ROOT_DIR}/etc/global_zones.json
-}
-
-function prometheus_setup_crontab {
-    # Setup crontab
-    tmp_crontab=/tmp/prometheus-$$.cron
-    minute=$((RANDOM % 60))
-    crontab -l > ${tmp_crontab}
-    [[ $? -eq 0 ]] || fatal "Unable to write to ${tmp_crontab}"
-    echo '' >>${tmp_crontab}
-    echo '# update the global_zones.json file' >>${tmp_crontab}
-    # BASHSTYLED
-    echo "${minute} * * * * ${ROOT_DIR}/bin/update_global_zones.sh >>/var/log/update_global_zones.log 2>&1" >>${tmp_crontab}
-    crontab ${tmp_crontab}
-    [[ $? -eq 0 ]] || fatal 'Unable to import crontab'
-    rm -f ${tmp_crontab}
-}
-
-
 # ---- mainline
 
 prometheus_setup_delegate_dataset
@@ -220,8 +200,6 @@ else # "$FLAVOR" == "triton"
     source /opt/smartdc/boot/lib/util.sh
     sdc_common_setup
 
-    prometheus_initialize_global_zones_json
-    prometheus_setup_crontab
     prometheus_setup_named
     prometheus_setup_prometheus
 
@@ -230,17 +208,6 @@ else # "$FLAVOR" == "triton"
     sdc_log_rotation_add registrar /var/svc/log/*registrar*.log 1g
     sdc_log_rotation_add prometheus /var/svc/log/*prometheus*.log 1g
     sdc_log_rotation_setup_end
-
-    #
-    # Update the global_zones.json the first time.
-    #
-    # We disable errexit so that failure to update when external services
-    # (DNS) are broken does not abort the completion of setup.
-    #
-    set +o errexit
-    ${ROOT_DIR}/bin/update_global_zones.sh \
-        >>/var/log/update_global_zones.log 2>&1
-    set -o errexit
 
     sdc_setup_complete
 fi

@@ -41,3 +41,6 @@ scrape_configs:
     static_configs:
     - targets:
       - localhost:9090
+
+remote_write:
+  url: '%%PROMETHEUS_REMOTE_WRITE_URL%%'

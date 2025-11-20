@@ -317,6 +317,9 @@ function prometheus_configure_update_config() {
         CMON_INSECURE='true'
     fi
 
+    PROMETHEUS_REMOTE_WRITE_URL=$(json -f "${CONFIG_JSON}" \
+        prometheus_remote_write_url)
+
     SCRAPE_INTERVAL=$(json -f "${CONFIG_JSON}" scrape_interval)
     if [[ -z "${SCRAPE_INTERVAL}" ]]; then
         SCRAPE_INTERVAL=${DEFAULT_SCRAPE_INTERVAL}
@@ -336,7 +339,7 @@ function prometheus_configure_update_config() {
         "${TEMPLATES_DIR}/${FLAVOR}-$(basename ${PROMETHEUS_YML}).in" \
         UPDATES_MADE PROM_USER DATACENTER_NAME CMON_CERT_FILE CMON_KEY_FILE \
         CMON_INSECURE CMON_DOMAIN SCRAPE_INTERVAL SCRAPE_TIMEOUT \
-        EVALUATION_INTERVAL
+        EVALUATION_INTERVAL PROMETHEUS_REMOTE_WRITE_URL
 
     return 0
 }

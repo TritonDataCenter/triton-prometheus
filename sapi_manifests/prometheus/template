@@ -5,6 +5,9 @@
 {{#cmon_enforce_certificate}}
     "cmon_enforce_certificate": {{{cmon_enforce_certificate}}},
 {{/cmon_enforce_certificate}}
+{{#prometheus_remote_write_url}}
+    "prometheus_remote_write_url": "{{{prometheus_remote_write_url}}}",
+{{/prometheus_remote_write_url}}
 
 {{#scrape_interval}}
     "scrape_interval": {{{scrape_interval}}},
